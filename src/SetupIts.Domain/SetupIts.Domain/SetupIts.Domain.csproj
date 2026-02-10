@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Folder Include="Aggregates\Catalog\Events\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\SetupIts.Shared\SetupIts.Shared.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<InternalsVisibleTo Include="SetupIts.Infrastructure" />
+		<InternalsVisibleTo Include="SetuIts.Tests.Integration" />
+	</ItemGroup>
+
+</Project>

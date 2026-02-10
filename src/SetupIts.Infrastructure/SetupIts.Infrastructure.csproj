@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Scrutor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SetupIts.Domain\SetupIts.Domain\SetupIts.Domain.csproj" />
+    <ProjectReference Include="..\SetupIts.Hosting\SetupIts.Hosting.csproj" />
+    <ProjectReference Include="..\SetupIts.Shared\SetupIts.Shared.csproj" />
+  </ItemGroup>
+
+</Project>
