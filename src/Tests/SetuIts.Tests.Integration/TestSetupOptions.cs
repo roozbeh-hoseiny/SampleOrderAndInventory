@@ -8,7 +8,7 @@ internal sealed class TestSetupOptions : IOptionsMonitor<SetupItsGlobalOptions>
 
     public TestSetupOptions(string connectionString)
     {
-        this._currentValue = new SetupItsGlobalOptions { Connectionstring = connectionString };
+        this._currentValue = new SetupItsGlobalOptions { ConnectionString = connectionString };
     }
 
     public SetupItsGlobalOptions CurrentValue => this._currentValue;

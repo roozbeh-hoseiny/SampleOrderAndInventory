@@ -26,6 +26,7 @@ internal sealed class OrderService : IOrderService
         this._validCustomerSpecification = validCustomerSpecification;
         this._validProductSpecification = validProductSpecification;
     }
+
     public async Task<PrimitiveResult<OrderId>> CreateOrder(CreateOrderRequest request, CancellationToken cancellationToken)
     {
         return await Order.Create(
@@ -38,25 +39,36 @@ internal sealed class OrderService : IOrderService
                 .Map(_ => PrimitiveResult.Success(newOrder.Id)))
             .ConfigureAwait(false);
     }
-    public async Task<PrimitiveResult> ConfirmOrder(ConfirmOrderRequest request, CancellationToken cancellationToken)
+
+    public Task<PrimitiveResult> ConfirmOrder(ConfirmOrderRequest request, CancellationToken cancellationToken) =>
+        this.ChangeOrderStatus(request.Id, order => order.Confirm(), cancellationToken);
+
+    public Task<PrimitiveResult> CancelOrder(CancelOrderRequest request, CancellationToken cancellationToken) =>
+        this.ChangeOrderStatus(request.Id, order => order.Cancel(), cancellationToken);
+
+    public async Task<PrimitiveResult<OrderReadModel>> GetOne(OrderId Id, CancellationToken cancellationToken) => await this._orderReadRepository.GetOne(Id, cancellationToken);
+
+
+    async Task<PrimitiveResult> ChangeOrderStatus(
+        OrderId id,
+        Func<Order, PrimitiveResult> func,
+        CancellationToken cancellationToken)
     {
-        var order = await this._orderWriteRepository.GetOne(request.Id, cancellationToken)
+        var order = await this._orderWriteRepository.GetOne(id, cancellationToken)
             .ConfigureAwait(false);
 
         if (order.IsFailure) return PrimitiveResult.Failure(order.Errors);
 
-        var confirmResult = order.Value.Confirm();
+        var changeStatusResult = func.Invoke(order.Value);
 
-        if (confirmResult.IsFailure) return PrimitiveResult.Failure(confirmResult.Errors);
+        if (changeStatusResult.IsFailure) return PrimitiveResult.Failure(changeStatusResult.Errors);
 
         var result = await this._orderWriteRepository
             .UpdateStatus(order.Value, cancellationToken)
             .ConfigureAwait(false);
 
-        if (result.IsFailure) return PrimitiveResult.Failure(confirmResult.Errors);
+        if (result.IsFailure) return PrimitiveResult.Failure(changeStatusResult.Errors);
 
         return PrimitiveResult.Success();
     }
-    public Task<PrimitiveResult> CancelOrder(CancelOrderRequest request, CancellationToken cancellationToken) => throw new NotImplementedException();
-    public Task<PrimitiveResult<OrderReadModel>> GetOne(OrderId Id, CancellationToken cancellationToken) => throw new NotImplementedException();
 }

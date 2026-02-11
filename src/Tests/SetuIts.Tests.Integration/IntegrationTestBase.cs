@@ -46,7 +46,7 @@ public abstract class IntegrationTestBase
 
     protected async Task<TOut> RunDbCommand<TOut>(Func<SqlConnection, Task<TOut>> func)
     {
-        var connectionString = this.ServiceProvider.GetRequiredService<IOptions<SetupItsGlobalOptions>>().Value.Connectionstring;
+        var connectionString = this.ServiceProvider.GetRequiredService<IOptions<SetupItsGlobalOptions>>().Value.ConnectionString;
         await using var connection = new SqlConnection(connectionString);
         var result = await func.Invoke(connection).ConfigureAwait(false);
         return result;

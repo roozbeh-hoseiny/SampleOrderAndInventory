@@ -6,6 +6,9 @@ using SetupIts.Domain.Abstractios;
 using SetupIts.Hosting;
 using SetupIts.Shared.Helpers;
 using SetupIts.Shared.Primitives;
+using System.Buffers;
+using System.Data;
+using static Dapper.SqlMapper;
 
 namespace SetupIts.Infrastructure.Abstractions;
 
@@ -22,13 +25,13 @@ public abstract class DapperGenericRepository
     #endregion
 
     #region " Constructor "
-    public DapperGenericRepository(string connectionString)
+    public DapperGenericRepository(IOptionsMonitor<SetupItsGlobalOptions> opts, bool isReadonly = false)
     {
-        this._connectionString = connectionString;
-    }
-    public DapperGenericRepository(IOptionsMonitor<SetupItsGlobalOptions> opts)
-    {
-        this._connectionString = opts.CurrentValue.Connectionstring;
+        var builder = new SqlConnectionStringBuilder(opts.CurrentValue.ConnectionString);
+        if (isReadonly)
+            builder.ApplicationIntent = ApplicationIntent.ReadOnly;
+
+        this._connectionString = builder.ConnectionString;
     }
     #endregion
 
@@ -62,6 +65,82 @@ public abstract class DapperGenericRepository
             cancellationToken);
     }
 
+    public virtual async Task<PrimitiveResult<MultipleReaderResult<T1, T2>>> QueryMultipleAsync<T1, T2>(
+        DapperCommandDefinitionBuilder commandBuilder,
+        Func<GridReader, Task<T1>> mapper1,
+        Func<GridReader, Task<T2>> mapper2,
+        CancellationToken cancellationToken)
+    {
+        return await this.WithConnectionAsync(
+            async (connection) =>
+            {
+                var dbResult = await connection.QueryMultipleAsync(commandBuilder.Build(cancellationToken)).ConfigureAwait(false);
+                if (dbResult is null) return PrimitiveResult.InternalFailure<MultipleReaderResult<T1, T2>>("Error", "null query multiple result");
+
+                var result = new MultipleReaderResult<T1, T2>()
+                {
+                    Item1 = await mapper1(dbResult).ConfigureAwait(false),
+                    Item2 = await mapper2(dbResult).ConfigureAwait(false)
+                };
+                return PrimitiveResult.Success(result);
+
+            },
+            cancellationToken)
+            .ConfigureAwait(false);
+    }
+    public virtual async Task<PrimitiveResult<MultipleReaderResult<T1, T2, T3>>> QueryMultipleAsync<T1, T2, T3>(
+        DapperCommandDefinitionBuilder commandBuilder,
+        Func<GridReader, Task<T1>> mapper1,
+        Func<GridReader, Task<T2>> mapper2,
+        Func<GridReader, Task<T3>> mapper3,
+        CancellationToken cancellationToken)
+    {
+        return await this.WithConnectionAsync(
+            async (connection) =>
+            {
+                var dbResult = await connection.QueryMultipleAsync(commandBuilder.Build(cancellationToken)).ConfigureAwait(false);
+                if (dbResult is null) return PrimitiveResult.InternalFailure<MultipleReaderResult<T1, T2, T3>>("Error", "null query multiple result");
+
+                var result = new MultipleReaderResult<T1, T2, T3>()
+                {
+                    Item1 = await mapper1(dbResult).ConfigureAwait(false),
+                    Item2 = await mapper2(dbResult).ConfigureAwait(false),
+                    Item3 = await mapper3(dbResult).ConfigureAwait(false)
+                };
+                return PrimitiveResult.Success(result);
+
+            },
+            cancellationToken)
+            .ConfigureAwait(false);
+    }
+    public virtual async Task<PrimitiveResult<MultipleReaderResult<T1, T2, T3, T4>>> QueryMultipleAsync<T1, T2, T3, T4>(
+        DapperCommandDefinitionBuilder commandBuilder,
+        Func<GridReader, Task<T1>> mapper1,
+        Func<GridReader, Task<T2>> mapper2,
+        Func<GridReader, Task<T3>> mapper3,
+        Func<GridReader, Task<T4>> mapper4,
+        CancellationToken cancellationToken)
+    {
+        return await this.WithConnectionAsync(
+            async (connection) =>
+            {
+                var dbResult = await connection.QueryMultipleAsync(commandBuilder.Build(cancellationToken)).ConfigureAwait(false);
+                if (dbResult is null) return PrimitiveResult.InternalFailure<MultipleReaderResult<T1, T2, T3, T4>>("Error", "null query multiple result");
+
+                var result = new MultipleReaderResult<T1, T2, T3, T4>()
+                {
+                    Item1 = await mapper1(dbResult).ConfigureAwait(false),
+                    Item2 = await mapper2(dbResult).ConfigureAwait(false),
+                    Item3 = await mapper3(dbResult).ConfigureAwait(false),
+                    Item4 = await mapper4(dbResult).ConfigureAwait(false)
+                };
+                return PrimitiveResult.Success(result);
+
+            },
+            cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public virtual async Task<PrimitiveResult<TOut>> SaveAsync<TEntity, TId, TOut>(
         TEntity entity,
         Func<DapperCommandDefinitionBuilder> commandBuilder,
@@ -70,11 +149,10 @@ public abstract class DapperGenericRepository
         where TId : IEquatable<TId>
         => await this.ExecuteScalarTransactionAsync<TEntity, TId, TOut>(commandBuilder.Invoke(), entity, cancellationToken);
 
-    protected async Task<TOut> RunDbCommand<TOut>(Func<SqlConnection, Task<TOut>> func)
+    protected async Task<TOut> RunDbCommand<TOut>(Func<SqlConnection, Task<TOut>> func, CancellationToken cancellationToken)
     {
-        await using var connection = new SqlConnection(this._connectionString);
-        await connection.OpenAsync().ConfigureAwait(false);
-        var result = await func.Invoke(connection).ConfigureAwait(false);
+        var result = await this.WithConnectionAsync(func, cancellationToken)
+            .ConfigureAwait(false);
         return result;
     }
 
@@ -96,10 +174,12 @@ public abstract class DapperGenericRepository
             .SetParameter("Id", id)
             .Build(cancellationToken);
 
-        using var connection = new SqlConnection(this._connectionString);
-        await connection.OpenAsync();
+        var result = await this.WithConnectionAsync(
+            (connection) => func.Invoke(connection, command),
+            cancellationToken)
+            .ConfigureAwait(false);
 
-        return await func.Invoke(connection, command).ConfigureAwait(false);
+        return result;
     }
 
     protected async Task<PrimitiveResult> ExecuteTransactionAsync<TEntity, TId>(
@@ -109,46 +189,22 @@ public abstract class DapperGenericRepository
         where TEntity : EntityBase<TId>
         where TId : IEquatable<TId>
     {
-        using var connection = new SqlConnection(this._connectionString);
-        await connection.OpenAsync();
-        using var transaction = connection.BeginTransaction();
-
-        try
-        {
-            var command = commandBuilder
-                .SetTransaction(transaction)
-                .Build(cancellationToken);
-            var result = await connection.ExecuteAsync(command).ConfigureAwait(false);
-
-            var now = DateTimeOffset.Now;
-            var t = 0;
-            foreach (var @event in entity.Events)
+        var result = await this.WithTransactionAsync(
+            async (connection, transaction) =>
             {
-                var outbox = new
-                {
-                    Id = IdHelper.CreateNewUlid(now.AddMilliseconds(++t)),
-                    OccurredAt = DateTimeOffset.Now,
-                    Type = @event.GetType().Name,
-                    Data = Newtonsoft.Json.JsonConvert.SerializeObject(@event, _defaultJsonSerializerSettings),
-                    Processed = false
-                };
+                var command = commandBuilder
+                   .SetTransaction(transaction)
+                   .Build(cancellationToken);
+                var result = await connection.ExecuteAsync(command).ConfigureAwait(false);
 
-                await connection.ExecuteAsync(
-                    @"INSERT INTO OutboxMessage (Id, OccurredAt, Type, Data, Processed)
-                      VALUES (@Id, @OccurredAt, @Type, @Data, @Processed)",
-                    outbox,
-                    transaction);
-            }
-            transaction.Commit();
+                await this.AddEntityEvents<TEntity, TId>(entity, connection, transaction);
 
-            entity.ClearDomainEvents();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
-        return PrimitiveResult.Success();
+                return PrimitiveResult.Success();
+
+            })
+            .ConfigureAwait(false);
+
+        return result;
     }
 
     async Task<PrimitiveResult<TOut>> ExecuteScalarTransactionAsync<TEntity, TId, TOut>(
@@ -158,63 +214,123 @@ public abstract class DapperGenericRepository
         where TEntity : EntityBase<TId>
         where TId : IEquatable<TId>
     {
-        using var connection = new SqlConnection(this._connectionString);
-        await connection.OpenAsync();
-        using var transaction = connection.BeginTransaction();
 
-        TOut result = default;
+        var result = await this.WithTransactionAsync(
+            async (connection, transaction) =>
+            {
+
+                var command = commandBuilder
+                   .SetTransaction(transaction)
+                   .Build(cancellationToken);
+                var dbResult = await connection.ExecuteScalarAsync(command).ConfigureAwait(false);
+
+                if (dbResult is null)
+                {
+                    return PrimitiveResult.InternalFailure<TOut>("Error", "Db null result");
+                }
+
+                await this.AddEntityEvents<TEntity, TId>(entity, connection, transaction);
+
+                if (dbResult is TOut value)
+                    return value;
+
+                return PrimitiveResult.InternalFailure<TOut>("Error", "Invalid casting!");
+
+            })
+            .ConfigureAwait(false);
+
+        return result;
+    }
+
+
+    async Task<PrimitiveResult> AddEntityEvents<TEntity, TId>(TEntity entity, SqlConnection connection, SqlTransaction transaction)
+        where TEntity : EntityBase<TId>
+        where TId : IEquatable<TId>
+    {
+        var now = DateTimeOffset.Now;
+        var t = 0;
+        foreach (var @event in entity.Events)
+        {
+            var outbox = new
+            {
+                Id = IdHelper.CreateNewUlid(now.AddMilliseconds(++t)),
+                OccurredAt = DateTimeOffset.Now,
+                Type = @event.GetType().Name,
+                Data = Newtonsoft.Json.JsonConvert.SerializeObject(@event, _defaultJsonSerializerSettings),
+                IsIntegrationEvent = @event.IsIntegrationEvent,
+                Processed = false
+            };
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO OutboxMessage (Id, OccurredAt, Type, Data, IsIntegrationEvent, Processed)
+                      VALUES (@Id, @OccurredAt, @Type, @Data, @IsIntegrationEvent, @Processed)",
+                outbox,
+                transaction);
+        }
+        entity.ClearDomainEvents();
+
+        return PrimitiveResult.Success();
+    }
+
+    protected async ValueTask<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        var connection = new SqlConnection(_connectionString);
 
         try
         {
-            var command = commandBuilder
-                .SetTransaction(transaction)
-                .Build(cancellationToken);
-            var dbResult = await connection.ExecuteScalarAsync(command).ConfigureAwait(false);
-
-            var now = DateTimeOffset.Now;
-            var t = 0;
-            foreach (var @event in entity.Events)
-            {
-                var outbox = new
-                {
-                    Id = IdHelper.CreateNewUlid(now.AddMilliseconds(++t)),
-                    OccurredAt = DateTimeOffset.Now,
-                    Type = @event.GetType().Name,
-                    Data = Newtonsoft.Json.JsonConvert.SerializeObject(@event, _defaultJsonSerializerSettings),
-                    Processed = false
-                };
-
-                await connection.ExecuteAsync(
-                    @"INSERT INTO OutboxMessage (Id, OccurredAt, Type, Data, Processed)
-                      VALUES (@Id, @OccurredAt, @Type, @Data, @Processed)",
-                    outbox,
-                    transaction);
-            }
-            transaction.Commit();
-            result = (TOut)dbResult;
-            entity.ClearDomainEvents();
+            await connection.OpenAsync(cancellationToken);
+            return connection;
         }
         catch
         {
-            transaction.Rollback();
+            await connection.DisposeAsync();
             throw;
         }
-        return result;
     }
+    protected async Task<TResult> WithConnectionAsync<TResult>(Func<SqlConnection, Task<TResult>> action, CancellationToken ct = default)
+    {
+        await using var connection = await OpenConnectionAsync(ct);
+        return await action(connection);
+    }
+    protected async Task<TResult> WithTransactionAsync<TResult>(
+        Func<SqlConnection, SqlTransaction, Task<TResult>> action,
+        IsolationLevel isolation = IsolationLevel.ReadCommitted,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var transaction = connection.BeginTransaction(isolation);
+
+        try
+        {
+            var result = await action(connection, transaction);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
 
     protected static string QuoteName(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return "[]";
 
-        var text = input.Trim();
+        ReadOnlySpan<char> span = input.AsSpan().Trim();
 
-        if (text.StartsWith("["))
-            text = text[1..];
+        var brackets = SearchValues.Create(['[', ']']);
 
-        if (text.EndsWith("]"))
-            text = text[..^1];
+        if (!span.IsEmpty && brackets.Contains(span[0]))
+            span = span[1..];
 
-        return $"[{text}]";
+        if (!span.IsEmpty && brackets.Contains(span[^1]))
+            span = span[..^1];
+
+        return $"[{span}]";
     }
 }

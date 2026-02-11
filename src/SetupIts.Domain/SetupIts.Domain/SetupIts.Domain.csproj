@@ -7,7 +7,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Folder Include="Aggregates\Catalog\Events\" />
+	  <Compile Remove="Aggregates\Catalog\Events\**" />
+	  <EmbeddedResource Remove="Aggregates\Catalog\Events\**" />
+	  <None Remove="Aggregates\Catalog\Events\**" />
 	</ItemGroup>
 
 	<ItemGroup>

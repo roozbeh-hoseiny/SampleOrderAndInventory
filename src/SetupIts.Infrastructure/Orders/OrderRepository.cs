@@ -12,10 +12,8 @@ namespace SetupIts.Infrastructure.Orders;
 
 public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
 {
-    const string TABLE_NAME = "[Order]";
-    const string ORDERITEM_TABLE_NAME = "OrderItem";
     const string AddOrderCommand = $"""
-        INSERT INTO {TABLE_NAME}
+        INSERT INTO {TableNames.Order_TableName}
         (
             {nameof(Order.Id)},    
             {nameof(Order.CustomerId)},
@@ -32,7 +30,7 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         );
         """;
     const string AddOrderItemCommand = $"""
-        INSERT INTO {ORDERITEM_TABLE_NAME}
+        INSERT INTO {TableNames.OrderItem_TableName}
         (
             {nameof(OrderItem.Id)},
             {nameof(OrderItem.OrderId)},
@@ -44,16 +42,16 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         """;
     const string GetOneQuery = $"""
         SELECT 
-            {TABLE_NAME}.{nameof(Order.Id)},
-            {TABLE_NAME}.{nameof(Order.CustomerId)},
-            {TABLE_NAME}.{nameof(Order.Status)},
-            {TABLE_NAME}.{nameof(Order.CreatedAt)},
-            {TABLE_NAME}.{nameof(Order.RowVersion)}
-        FROM {TABLE_NAME}
-        WHERE {TABLE_NAME}.{nameof(Order.Id)}  = @{nameof(Order.Id)} 
+            {TableNames.Order_TableName}.{nameof(Order.Id)},
+            {TableNames.Order_TableName}.{nameof(Order.CustomerId)},
+            {TableNames.Order_TableName}.{nameof(Order.Status)},
+            {TableNames.Order_TableName}.{nameof(Order.CreatedAt)},
+            {TableNames.Order_TableName}.{nameof(Order.RowVersion)}
+        FROM {TableNames.Order_TableName}
+        WHERE {TableNames.Order_TableName}.{nameof(Order.Id)}  = @{nameof(Order.Id)} 
         """;
     const string ChangeStatusCommand = $"""
-        UPDATE {TABLE_NAME}
+        UPDATE {TableNames.Order_TableName}
         SET [Status] = @Status
         OUTPUT inserted.{nameof(Order.RowVersion)}
         WHERE 
@@ -63,21 +61,21 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         """;
     const string GetOneWithOrdersQuery = $"""
         SELECT 
-            {TABLE_NAME}.{nameof(Order.Id)},
-            {TABLE_NAME}.{nameof(Order.CustomerId)},
-            {TABLE_NAME}.{nameof(Order.Status)},
-            {TABLE_NAME}.{nameof(Order.CreatedAt)},
+            {TableNames.Order_TableName}.{nameof(Order.Id)},
+            {TableNames.Order_TableName}.{nameof(Order.CustomerId)},
+            {TableNames.Order_TableName}.{nameof(Order.Status)},
+            {TableNames.Order_TableName}.{nameof(Order.CreatedAt)},
             
-            {ORDERITEM_TABLE_NAME}.{nameof(OrderItem.Id)},
-            {ORDERITEM_TABLE_NAME}.{nameof(OrderItem.ProductId)},
-            {ORDERITEM_TABLE_NAME}.{nameof(OrderItem.Qty)},
-            {ORDERITEM_TABLE_NAME}.{nameof(OrderItem.UnitPrice)}
-        FROM {TABLE_NAME}
-        LEFT OUTER JOIN {ORDERITEM_TABLE_NAME} 
-        ON {TABLE_NAME}.{nameof(Order.Id)} = {ORDERITEM_TABLE_NAME}.{nameof(OrderItem.OrderId)}
-        WHERE {TABLE_NAME}.{nameof(Order.Id)}  = @{nameof(Order.Id)} 
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.Id)},
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.ProductId)},
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.Qty)},
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.UnitPrice)}
+        FROM {TableNames.Order_TableName}
+        LEFT OUTER JOIN {TableNames.OrderItem_TableName} 
+        ON {TableNames.Order_TableName}.{nameof(Order.Id)} = {TableNames.OrderItem_TableName}.{nameof(OrderItem.OrderId)}
+        WHERE {TableNames.Order_TableName}.{nameof(Order.Id)}  = @{nameof(Order.Id)} 
         """;
-    public string TableName => TABLE_NAME;
+    public string TableName => TableNames.Order_TableName;
 
     public OrderRepository(IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
     {
@@ -87,16 +85,38 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
 
     public async Task<PrimitiveResult<byte[]>> Add(Order entity, CancellationToken cancellationToken)
     {
-        var result = await this.SaveAsync<Order, OrderId, byte[]>(
-            entity,
-            () => CreateOrderInsertCommand(entity),
-            cancellationToken)
-            .ConfigureAwait(false);
+        var addOrderCommand = DapperCommandDefinitionBuilder
+            .Query($"{AddOrderCommand}")
+            .SetParameter(nameof(Order.Id), entity.Id.Value)
+            .SetParameter(nameof(Order.CustomerId), entity.CustomerId)
+            .SetParameter(nameof(Order.Status), entity.Status)
+            .SetParameter(nameof(Order.CreatedAt), entity.CreatedAt);
 
-        if (result.IsSuccess)
-            entity.SetRowVersion(result.Value);
+        var result = await this.WithTransactionAsync(
+            async (connection, transaction) =>
+            {
+                addOrderCommand.SetTransaction(transaction);
 
-        return result;
+                var addOrderResult = await connection.ExecuteScalarAsync<byte[]>(addOrderCommand.Build(cancellationToken))
+                    .ConfigureAwait(false);
+
+                var addOrderItemsResult = await connection.ExecuteAsync(
+                    CreateOrderInsertCommand(entity)
+                            .SetTransaction(transaction)
+                            .Build(cancellationToken))
+                    .ConfigureAwait(false);
+
+                return PrimitiveResult.Success(addOrderResult);
+
+            },
+            cancellationToken: cancellationToken);
+
+        if (result is null) PrimitiveResult.Failure<byte[]>("Error", "result is null");
+
+        if (result!.IsSuccess)
+            entity.SetRowVersion(result!.Value!);
+
+        return result!;
 
     }
     public async Task<PrimitiveResult<byte[]>> UpdateStatus(Order entity, CancellationToken cancellationToken)
@@ -119,51 +139,52 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
     public Task<PrimitiveResult<byte[]>> Update(Order entity, CancellationToken cancellationToken) => throw new NotImplementedException();
     public async Task<PrimitiveResult<Order>> GetOne(OrderId id, CancellationToken cancellationToken)
     {
-        var result = await this.RunDbCommand<Order>(connection =>
+        var result = await this.RunDbCommand(connection =>
             connection.QueryFirstOrDefaultAsync<Order>(
                 DapperCommandDefinitionBuilder
                     .Query(GetOneQuery)
                     .SetParameter($"{nameof(Order.Id)}", id.Value, System.Data.DbType.String)
                     .Build(cancellationToken)
-                )).ConfigureAwait(false);
+                ), cancellationToken).ConfigureAwait(false);
 
         if (result is not null) return result;
         return PrimitiveResult.Failure<Order>("NotFound.Error", $"An order wth Id:{id.Value} not found");
 
     }
-    public async Task<PrimitiveResult<Order>> GetOne__(OrderId id, CancellationToken cancellationToken)
+    public async Task<PrimitiveResult<Order>> GetOneWithItems(OrderId id, CancellationToken cancellationToken)
     {
-        var result = await this.RunDbCommand<Order>(async connection =>
+        var result = await this.RunDbCommand(async connection =>
         {
-            var orderDict = new Dictionary<string, Order>(StringComparer.InvariantCultureIgnoreCase);
+            var orderLookup = new Dictionary<OrderId, Order>();
 
-            var command = DapperCommandDefinitionBuilder
-                .Query(GetOneWithOrdersQuery)
-                .SetParameter($"{nameof(Order.Id)}", id.Value, System.Data.DbType.String)
-                .Build(cancellationToken);
-
-            var result = (await connection.QueryAsync<Order, OrderItem, Order>(
-                command,
-                (order, orderItem) =>
+            await connection.QueryAsync<Order, OrderItem, Order>(
+                DapperCommandDefinitionBuilder
+                    .Query(GetOneWithOrdersQuery)
+                    .SetParameter($"{nameof(Order.Id)}", id.Value, System.Data.DbType.String)
+                    .Build(cancellationToken),
+                (order, item) =>
                 {
-                    if (!orderDict.TryGetValue(order.Id.Value, out var currentOrder))
+                    if (!orderLookup.TryGetValue(order.Id, out var existing))
                     {
-                        currentOrder = order;
-                        orderDict.Add(order.Id.Value, currentOrder);
+                        existing = order;
+                        orderLookup.Add(existing.Id, existing);
                     }
-                    if (orderItem is not null)
+
+                    if (item is not null)
                     {
-                        currentOrder.AddOrderItem(orderItem);
+                        existing.AddOrderItem(item);
                     }
-                    return currentOrder;
+
+                    return existing;
                 },
-                "OrderItemId")
-                .ConfigureAwait(false)).ToList();
-            return result?.FirstOrDefault();
-        });
+                splitOn: nameof(OrderItem.Id));
+
+            return orderLookup.Values.FirstOrDefault();
+        }, cancellationToken).ConfigureAwait(false);
 
         if (result is not null) return result;
         return PrimitiveResult.Failure<Order>("NotFound.Error", $"An order wth Id:{id.Value} not found");
+
     }
 
     static DapperCommandDefinitionBuilder CreateOrderInsertCommand(Order entity)
@@ -183,7 +204,7 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         }
 
         var result = DapperCommandDefinitionBuilder
-            .Query($"{AddOrderCommand}{Environment.NewLine}{AddOrderItemCommand.Replace("#ORDER_ITEM_VALUES#", addOrderItemValuesCommand)}")
+            .Query($"{AddOrderItemCommand.Replace("#ORDER_ITEM_VALUES#", addOrderItemValuesCommand)}")
             .SetParameter(nameof(Order.Id), entity.Id.Value)
             .SetParameter(nameof(Order.CustomerId), entity.CustomerId)
             .SetParameter(nameof(Order.Status), entity.Status)
@@ -203,10 +224,4 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         }
         return result;
     }
-
-}
-
-internal sealed class OrderReadRepository : IOrderReadRepository
-{
-    public Task<PrimitiveResult<IReadOnlyCollection<OrderReadModel>>> GetOne(OrderId id, CancellationToken cancellationToken) => throw new NotImplementedException();
 }
