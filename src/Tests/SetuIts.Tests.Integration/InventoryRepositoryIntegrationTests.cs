@@ -2,16 +2,19 @@
 using SetupIts.Domain.Aggregates.Inventory;
 using SetupIts.Domain.Aggregates.Inventory.Persistence;
 using SetupIts.Domain.ValueObjects;
+using SetupIts.Infrastructure;
 
 namespace SetuIts.Tests.Integration;
 
 public sealed class InventoryRepositoryIntegrationTests : IntegrationTestBase
 {
     private readonly IInventoryRepository _inventoryItemRepository;
+    private readonly IUnitOfWork _unitOfWork;
 
     public InventoryRepositoryIntegrationTests()
     {
-        this._inventoryItemRepository = this.GetRepository<IInventoryRepository>();
+        this._inventoryItemRepository = this.GetService<IInventoryRepository>();
+        this._unitOfWork = this.GetService<IUnitOfWork>();
     }
 
     [Fact]
@@ -22,12 +25,15 @@ public sealed class InventoryRepositoryIntegrationTests : IntegrationTestBase
         await this.ClearInventoryTableAsync();
 
         var inventoryItem = InventoryItem.Create(
-            ProductId.Create(),
+            this._productId1,
             1,
             Quantity.Create(onHandQty).Value).Value;
 
         // Act
-        var result = await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        var result = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._unitOfWork.InventoryRepository.Add(inventoryItem, CancellationToken.None);
+        });
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -48,14 +54,21 @@ public sealed class InventoryRepositoryIntegrationTests : IntegrationTestBase
         await this.ClearInventoryTableAsync();
 
         var inventoryItem = InventoryItem.Create(
-            ProductId.Create(),
+            this._productId1,
             1,
             Quantity.Create(onHandQty).Value).Value;
 
-        // Act
-        var addResult = await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        var addResult = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        });
+
         inventoryItem.Receive(Quantity.CreateUnsafe(receiveQty));
-        var result = await this._inventoryItemRepository.Update(inventoryItem, CancellationToken.None);
+
+        var result = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._inventoryItemRepository.Update(inventoryItem, CancellationToken.None);
+        });
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -77,14 +90,20 @@ public sealed class InventoryRepositoryIntegrationTests : IntegrationTestBase
         await this.ClearInventoryTableAsync();
 
         var inventoryItem = InventoryItem.Create(
-            ProductId.Create(),
+            this._productId1,
             1,
             Quantity.Create(onHandQty).Value).Value;
 
         // Act
-        var addResult = await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        var addResult = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        });
         inventoryItem.Reserve(Quantity.CreateUnsafe(reserveQty));
-        var result = await this._inventoryItemRepository.Update(inventoryItem, CancellationToken.None);
+        var result = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._inventoryItemRepository.Update(inventoryItem, CancellationToken.None);
+        });
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -106,15 +125,21 @@ public sealed class InventoryRepositoryIntegrationTests : IntegrationTestBase
         await this.ClearInventoryTableAsync();
 
         var inventoryItem = InventoryItem.Create(
-            ProductId.Create(),
+            this._productId1,
             1,
             Quantity.Create(onHandQty).Value).Value;
 
         // Act
-        var addResult = await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        var addResult = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._inventoryItemRepository.Add(inventoryItem, CancellationToken.None);
+        });
         inventoryItem.Reserve(Quantity.CreateUnsafe(reserveQty));
         inventoryItem.Release(Quantity.CreateUnsafe(releaseQty));
-        var result = await this._inventoryItemRepository.Update(inventoryItem, CancellationToken.None);
+        var result = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            return await this._inventoryItemRepository.Update(inventoryItem, CancellationToken.None);
+        });
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -125,4 +150,6 @@ public sealed class InventoryRepositoryIntegrationTests : IntegrationTestBase
         dbItem.IsSuccess.Should().BeTrue();
         dbItem.Value.ReservedQty.Value.Should().Be(reserveQty - releaseQty);
     }
+
+
 }

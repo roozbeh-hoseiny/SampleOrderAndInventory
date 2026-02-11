@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Dapper;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SetupIts.Domain.Aggregates.Inventory;
 using SetupIts.Hosting;
@@ -122,17 +123,22 @@ public sealed class IdempotencyStore : DapperGenericRepository, IIdempotencyStor
 
         try
         {
-            var updateResult = await this.SaveAsync<IdempotencyModel, Guid, byte[]>(
-                existing,
-                () => DapperCommandDefinitionBuilder
-                    .Query(UpdateIdempotencyQuery)
-                    .SetParameter($"@{nameof(IdempotencyModel.Id)}", existing.Id)
-                    .SetParameter($"@{nameof(IdempotencyModel.RequestHash)}", existing.RequestHash)
-                    .SetParameter($"@{nameof(IdempotencyModel.Status)}", existing.Status)
-                    .SetParameter($"@{nameof(IdempotencyModel.UpdatedAt)}", existing.UpdatedAt)
-                    .SetParameter($"@{nameof(IdempotencyModel.RowVersion)}", existing.RowVersion)
-                    .SetParameter($"@{nameof(IdempotencyModel.ExpireAt)}", existing.ExpireAt),
-                cancellationToken);
+            var updateResult = await this.RunDbCommand(async connection =>
+            {
+                var dbResult = await connection.ExecuteAsync(
+                    DapperCommandDefinitionBuilder
+                        .Query(UpdateIdempotencyQuery)
+                        .SetParameter($"@{nameof(IdempotencyModel.Id)}", existing.Id)
+                        .SetParameter($"@{nameof(IdempotencyModel.RequestHash)}", existing.RequestHash)
+                        .SetParameter($"@{nameof(IdempotencyModel.Status)}", existing.Status)
+                        .SetParameter($"@{nameof(IdempotencyModel.UpdatedAt)}", existing.UpdatedAt)
+                        .SetParameter($"@{nameof(IdempotencyModel.RowVersion)}", existing.RowVersion)
+                        .SetParameter($"@{nameof(IdempotencyModel.ExpireAt)}", existing.ExpireAt)
+                        .Build(cancellationToken));
+                return dbResult > 0 ? PrimitiveResult.Success() : PrimitiveResult.InternalFailure("Error", "Can not update idempotency model");
+            },
+            cancellationToken).ConfigureAwait(false);
+
             if (updateResult.IsSuccess)
             {
                 return existing;

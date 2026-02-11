@@ -1,34 +1,26 @@
-﻿using FluentAssertions;
+﻿using Dapper;
+using FluentAssertions;
+using SetupIts.Domain.Aggregates.Inventory;
 using SetupIts.Domain.DomainServices;
 using SetupIts.Domain.ValueObjects;
+using SetupIts.Infrastructure;
 
 namespace SetuIts.Tests.Integration;
 public sealed class OrderServiceIntegrationTests : IntegrationTestBase
 {
-    ProductId _productId1 = ProductId.Create("01KH5WPMCQW2DNBF72KZXF0NZW");
-    ProductId _productId2 = ProductId.Create("01KH5WQB3BKV45TW1QCMC9FWSN");
 
+    private readonly IUnitOfWork _unitOfWork;
     public OrderServiceIntegrationTests()
     {
+        this._unitOfWork = this.GetService<IUnitOfWork>();
     }
 
-    CreateOrderRequest CreateNewOrderRequest() => new CreateOrderRequest(
-            1,
-            [
-                new SetupIts.Domain.Aggregates.Ordering.OrderItemCreateData(
-                    _productId1,
-                    Quantity.CreateUnsafe(1),
-                    UnitPrice.CreateUnsafe(1000)),
-                new SetupIts.Domain.Aggregates.Ordering.OrderItemCreateData(
-                    _productId2,
-                    Quantity.CreateUnsafe(3),
-                    UnitPrice.CreateUnsafe(852))
-            ]);
 
     [Fact]
     public async Task CreateOrder_ShouldWork()
     {
-        var orderService = this.GetRepository<IOrderService>();
+        await this.ClearOrderTables();
+        var orderService = this.GetService<IOrderService>();
 
         var result = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
@@ -37,22 +29,43 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task ConfirmOrder_ShouldWork()
     {
-        var orderService = this.GetRepository<IOrderService>();
-        // Arrange
+        await this.ClearOrderTables();
+        var orderService = this.GetService<IOrderService>();
+
+        var onHandQty = 50;
+        await this.ClearInventoryTableAsync();
+
+        var inventoryItem1 = InventoryItem.Create(
+            this._productId1,
+            1,
+            Quantity.Create(onHandQty).Value).Value;
+        var inventoryItem2 = InventoryItem.Create(
+            this._productId2,
+            1,
+            Quantity.Create(onHandQty).Value).Value;
+
+        // Act
+        var inventoryItemAddResult = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            await this._unitOfWork.InventoryRepository.Add(inventoryItem1, CancellationToken.None);
+            return await this._unitOfWork.InventoryRepository.Add(inventoryItem2, CancellationToken.None);
+        });
+
+
         var addResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
         addResult.IsSuccess.Should().BeTrue();
 
-        // Act
         var result = await orderService.ConfirmOrder(new ConfirmOrderRequest(addResult.Value), CancellationToken.None);
 
-        // Assert
         result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]
     public async Task CancelOrder_ShouldWork()
     {
-        var orderService = this.GetRepository<IOrderService>();
+        await this.ClearOrderTables();
+
+        var orderService = this.GetService<IOrderService>();
 
         var createResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
         createResult.IsSuccess.Should().BeTrue();
@@ -67,7 +80,9 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task Confirming_CancelledOrder_ShouldNotWork()
     {
-        var orderService = this.GetRepository<IOrderService>();
+        await this.ClearOrderTables();
+
+        var orderService = this.GetService<IOrderService>();
 
         var createResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
         createResult.IsSuccess.Should().BeTrue();
@@ -82,7 +97,9 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task Cancelling_CancelledOrder_ShouldNotWork()
     {
-        var orderService = this.GetRepository<IOrderService>();
+        await this.ClearOrderTables();
+
+        var orderService = this.GetService<IOrderService>();
 
         var createResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
         createResult.IsSuccess.Should().BeTrue();
@@ -97,7 +114,9 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task GetOneOrderWithItems_ShouldWork()
     {
-        var orderService = this.GetRepository<IOrderService>();
+        await this.ClearOrderTables();
+
+        var orderService = this.GetService<IOrderService>();
 
         var req = CreateNewOrderRequest();
         var createResult = await orderService.CreateOrder(req, CancellationToken.None);
@@ -107,5 +126,26 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
 
         result.IsSuccess.Should().BeTrue();
         result.Value.OrderItems.Count.Should().Be(req.OrderItems.Length);
+    }
+
+    CreateOrderRequest CreateNewOrderRequest() => new CreateOrderRequest(
+           1,
+           [
+                new SetupIts.Domain.Aggregates.Ordering.OrderItemCreateData(
+                    _productId1,
+                    Quantity.CreateUnsafe(1),
+                    UnitPrice.CreateUnsafe(1000)),
+                new SetupIts.Domain.Aggregates.Ordering.OrderItemCreateData(
+                    _productId2,
+                    Quantity.CreateUnsafe(3),
+                    UnitPrice.CreateUnsafe(852))
+           ]);
+
+    async Task ClearOrderTables()
+    {
+        await this.RunDbCommand(connection => connection.ExecuteAsync("DELETE FROM [OrderItem]")).ConfigureAwait(false);
+        await this.RunDbCommand(connection => connection.ExecuteAsync("DELETE FROM [Order]")).ConfigureAwait(false);
+        await this.RunDbCommand(connection => connection.ExecuteAsync("DELETE FROM [Outboxmessage]")).ConfigureAwait(false);
+        await this.RunDbCommand(connection => connection.ExecuteAsync("DELETE FROM [InventoryItem]")).ConfigureAwait(false);
     }
 }

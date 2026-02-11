@@ -9,6 +9,7 @@ using SetupIts.Hosting;
 using SetupIts.Infrastructure.Idempotency;
 using SetupIts.Infrastructure.Inventory;
 using SetupIts.Infrastructure.Orders;
+using System.Data;
 using System.Reflection;
 
 namespace SetupIts.Infrastructure.DI;
@@ -24,6 +25,7 @@ public sealed class ProjectServiceInstaller : IServiceInstaller
             .AddGlobalOptions(config)
             .AddRepositories()
             .AddSpecifications()
+            .AddUnitOfWork()
             ;
     }
 
@@ -75,6 +77,19 @@ static class ServiceCollectionExtension
     {
         services.TryAddScoped<IValidCustomerSpecification, ValidCustomerSpecification>();
         services.TryAddScoped<IValidProductSpecification, ValidProductSpecification>();
+
+        return services;
+    }
+    internal static IServiceCollection AddUnitOfWork(this IServiceCollection services)
+    {
+        services.TryAddScoped<CurrentTransactionScopeHandler>();
+        services.TryAddScoped<ICurrentTransactionScope>(sp =>
+            sp.GetRequiredService<CurrentTransactionScopeHandler>());
+
+        services.TryAddScoped<ICurrentTransactionScopeHandler>(sp =>
+            sp.GetRequiredService<CurrentTransactionScopeHandler>());
+
+        services.TryAddScoped<IUnitOfWork, UnitOfWork>();
 
         return services;
     }

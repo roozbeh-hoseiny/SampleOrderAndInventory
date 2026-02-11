@@ -50,6 +50,17 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         FROM {TableNames.Order_TableName}
         WHERE {TableNames.Order_TableName}.{nameof(Order.Id)}  = @{nameof(Order.Id)} 
         """;
+    readonly static string GetOrderItemsQuery = $"""
+        SELECT 
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.Id)} ,
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.ProductId)},
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.Qty)},
+            {TableNames.OrderItem_TableName}.{nameof(OrderItem.UnitPrice)}
+        FROM {TableNames.OrderItem_TableName}
+        WHERE {TableNames.OrderItem_TableName}.{nameof(OrderItem.OrderId)}  = @{nameof(Order.Id)} 
+        """;
+    private readonly ICurrentTransactionScope _currentTransactionScope;
+    private readonly IOptionsMonitor<SetupItsGlobalOptions> _opts;
     const string ChangeStatusCommand = $"""
         UPDATE {TableNames.Order_TableName}
         SET [Status] = @Status
@@ -77,14 +88,17 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         """;
     public string TableName => TableNames.Order_TableName;
 
-    public OrderRepository(IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
+    public OrderRepository(ICurrentTransactionScope currentTransactionScope, IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
     {
-
+        this._currentTransactionScope = currentTransactionScope;
+        this._opts = opts;
     }
 
 
     public async Task<PrimitiveResult<byte[]>> Add(Order entity, CancellationToken cancellationToken)
     {
+        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
+
         var addOrderCommand = DapperCommandDefinitionBuilder
             .Query($"{AddOrderCommand}")
             .SetParameter(nameof(Order.Id), entity.Id.Value)
@@ -92,42 +106,39 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
             .SetParameter(nameof(Order.Status), entity.Status)
             .SetParameter(nameof(Order.CreatedAt), entity.CreatedAt);
 
-        var result = await this.WithTransactionAsync(
-            async (connection, transaction) =>
-            {
-                addOrderCommand.SetTransaction(transaction);
+        addOrderCommand.SetTransaction(currentTransaction);
 
-                var addOrderResult = await connection.ExecuteScalarAsync<byte[]>(addOrderCommand.Build(cancellationToken))
-                    .ConfigureAwait(false);
+        var result = await currentTransaction.Connection
+            .ExecuteScalarAsync<byte[]>(addOrderCommand.Build(cancellationToken))
+            .ConfigureAwait(false);
 
-                var addOrderItemsResult = await connection.ExecuteAsync(
-                    CreateOrderInsertCommand(entity)
-                            .SetTransaction(transaction)
-                            .Build(cancellationToken))
-                    .ConfigureAwait(false);
+        var addOrderItemsResult = await currentTransaction.Connection.ExecuteAsync(
+            CreateOrderInsertCommand(entity)
+                    .SetTransaction(currentTransaction)
+                    .Build(cancellationToken))
+            .ConfigureAwait(false);
 
-                return PrimitiveResult.Success(addOrderResult);
-
-            },
-            cancellationToken: cancellationToken);
+        await this.AddEntityEvents<Order, OrderId>(entity, currentTransaction).ConfigureAwait(false);
 
         if (result is null) PrimitiveResult.Failure<byte[]>("Error", "result is null");
 
-        if (result!.IsSuccess)
-            entity.SetRowVersion(result!.Value!);
+        entity.SetRowVersion(result!);
 
         return result!;
 
     }
     public async Task<PrimitiveResult<byte[]>> UpdateStatus(Order entity, CancellationToken cancellationToken)
     {
+        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
+
         var result = await this.SaveAsync<Order, OrderId, byte[]>(
            entity,
-           () => DapperCommandDefinitionBuilder
+           DapperCommandDefinitionBuilder
             .Query(ChangeStatusCommand)
             .SetParameter(nameof(Order.Id), entity.Id.Value)
             .SetParameter(nameof(Order.RowVersion), entity.RowVersion)
             .SetParameter(nameof(Order.Status), entity.Status),
+           currentTransaction,
            cancellationToken)
            .ConfigureAwait(false);
 
@@ -139,17 +150,33 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
     public Task<PrimitiveResult<byte[]>> Update(Order entity, CancellationToken cancellationToken) => throw new NotImplementedException();
     public async Task<PrimitiveResult<Order>> GetOne(OrderId id, CancellationToken cancellationToken)
     {
-        var result = await this.RunDbCommand(connection =>
-            connection.QueryFirstOrDefaultAsync<Order>(
-                DapperCommandDefinitionBuilder
-                    .Query(GetOneQuery)
-                    .SetParameter($"{nameof(Order.Id)}", id.Value, System.Data.DbType.String)
-                    .Build(cancellationToken)
-                ), cancellationToken).ConfigureAwait(false);
+        var result = await this.RunDbCommand(async connection =>
+        {
+            Order? result = null;
+
+            var command = DapperCommandDefinitionBuilder
+                    .Query($"{GetOneQuery}{Environment.NewLine}{GetOrderItemsQuery}")
+                    .SetParameter(nameof(Order.Id), id.Value, System.Data.DbType.String);
+
+            var dbResult = await this.QueryMultipleAsync(
+                command,
+                async (reader) => await reader.ReadFirstOrDefaultAsync<Order>(),
+                    async (reader) => (await reader.ReadAsync<OrderItem>())?.ToList(),
+                    cancellationToken)
+            .ConfigureAwait(false);
+
+            if (dbResult.IsFailure || dbResult.Value.Item1 is null) return result;
+
+            result = dbResult.Value.Item1;
+            result.AddOrderItems(dbResult.Value.Item2 ?? []);
+
+            return result;
+
+        }, cancellationToken).ConfigureAwait(false);
 
         if (result is not null) return result;
-        return PrimitiveResult.Failure<Order>("NotFound.Error", $"An order wth Id:{id.Value} not found");
 
+        return PrimitiveResult.Failure<Order>("NotFound.Error", $"An order wth Id:{id.Value} not found");
     }
     public async Task<PrimitiveResult<Order>> GetOneWithItems(OrderId id, CancellationToken cancellationToken)
     {

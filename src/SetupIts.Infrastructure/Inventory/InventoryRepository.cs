@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Dapper;
+using Microsoft.Extensions.Options;
 using SetupIts.Domain.Aggregates.Inventory;
 using SetupIts.Domain.Aggregates.Inventory.Persistence;
 using SetupIts.Domain.ValueObjects;
@@ -9,9 +10,9 @@ using SetupIts.Shared.Primitives;
 namespace SetupIts.Infrastructure.Inventory;
 public sealed class InventoryRepository : DapperGenericRepository, IInventoryRepository
 {
-    const string TABLE_NAME = "InventoryItem";
+    #region " Queries "
     const string AddInventoryItemCommand = $"""
-        INSERT INTO {TABLE_NAME}(
+        INSERT INTO {TableNames.InventoryItem_TableName}(
             {nameof(InventoryItem.Id)},
             {nameof(InventoryItem.ProductId)},
             {nameof(InventoryItem.WarehouseId)},
@@ -28,7 +29,7 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
         );
         """;
     const string UpdateInventoryItemCommand = $"""
-        Update {TABLE_NAME}
+        Update {TableNames.InventoryItem_TableName}
         SET
             {nameof(InventoryItem.ProductId)} = @{nameof(InventoryItem.ProductId)},
             {nameof(InventoryItem.WarehouseId)} = @{nameof(InventoryItem.WarehouseId)},
@@ -40,20 +41,51 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
 
         SELECT {nameof(InventoryItem.RowVersion)} FROM InventoryItem WHERE {nameof(InventoryItem.Id)} = @{nameof(InventoryItem.Id)};
         """;
-    public string TableName => TABLE_NAME;
+    const string UpdateReservedQtyCommand = $"""
+        Update {TableNames.InventoryItem_TableName}
+        SET
+            {nameof(InventoryItem.ReservedQty)} = @{nameof(InventoryItem.ReservedQty)}
+        WHERE 
+            {nameof(InventoryItem.Id)} = @{nameof(InventoryItem.Id)}
+            AND {nameof(InventoryItem.RowVersion)} = @{nameof(InventoryItem.RowVersion)};
 
-    public InventoryRepository(IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
+        SELECT {nameof(InventoryItem.RowVersion)} FROM InventoryItem WHERE {nameof(InventoryItem.Id)} = @{nameof(InventoryItem.Id)};
+        """;
+    const string GetByProductIdsQuery = $"""
+        SELECT {TableNames.InventoryItem_TableName}.* 
+        FROM {TableNames.InventoryItem_TableName}
+        WHERE {nameof(InventoryItem.ProductId)} IN 
+        (
+        	SELECT [Value] FROM OPENJSON(@Ids)
+        )
+        """;
+    #endregion
+
+    #region " Fields "
+    private readonly ICurrentTransactionScope _currentTransactionScope;
+    #endregion
+
+    #region " Properties "
+    public string TableName => TableNames.InventoryItem_TableName;
+    #endregion
+
+    #region " Constructor "
+    public InventoryRepository(ICurrentTransactionScope currentTransactionScope, IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
     {
-
+        this._currentTransactionScope = currentTransactionScope;
     }
+    #endregion
 
     public async Task<PrimitiveResult<byte[]>> Add(
         InventoryItem entity,
         CancellationToken cancellationToken)
     {
+        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
+
         var result = await this.SaveAsync<InventoryItem, InventoryItemId, byte[]>(
             entity,
             CreateAddAndUpdateInventoryItemCommand(AddInventoryItemCommand, entity),
+            currentTransaction,
             cancellationToken)
             .ConfigureAwait(false);
 
@@ -65,9 +97,12 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
 
     public async Task<PrimitiveResult<byte[]>> Update(InventoryItem entity, CancellationToken cancellationToken)
     {
+        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
+
         var result = await this.SaveAsync<InventoryItem, InventoryItemId, byte[]>(
             entity,
             CreateAddAndUpdateInventoryItemCommand(UpdateInventoryItemCommand, entity),
+            currentTransaction,
             cancellationToken)
             .ConfigureAwait(false);
 
@@ -75,6 +110,24 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
             entity.SetRowVersion(result.Value);
 
         return result;
+    }
+    public async Task<PrimitiveResult> UpdateReservedQty(InventoryItem entity, CancellationToken cancellationToken)
+    {
+        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
+
+        var result = await this.SaveAsync<InventoryItem, InventoryItemId, byte[]>(
+            entity,
+             DapperCommandDefinitionBuilder
+            .Query(UpdateReservedQtyCommand)
+            .SetParameter($"@{nameof(InventoryItem.Id)}", entity.Id.Value)
+            .SetParameter($"@{nameof(InventoryItem.ReservedQty)}", entity.ReservedQty.Value)
+            .SetParameter($"@{nameof(InventoryItem.RowVersion)}", entity.RowVersion),
+            currentTransaction,
+            cancellationToken)
+            .ConfigureAwait(false);
+
+
+        return result.IsSuccess ? PrimitiveResult.Success() : PrimitiveResult.Failure(result.Errors);
     }
 
     public Task<PrimitiveResult<InventoryItem>> GetOne(InventoryItemId id, CancellationToken cancellationToken)
@@ -92,7 +145,7 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
             this.TableName,
             cancellationToken);
     }
-    static Func<DapperCommandDefinitionBuilder> CreateAddAndUpdateInventoryItemCommand(string command, InventoryItem entity) => () =>
+    static DapperCommandDefinitionBuilder CreateAddAndUpdateInventoryItemCommand(string command, InventoryItem entity) =>
         DapperCommandDefinitionBuilder
             .Query(command)
             .SetParameter($"@{nameof(InventoryItem.Id)}", entity.Id.Value)
@@ -101,4 +154,22 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
             .SetParameter($"@{nameof(InventoryItem.OnHandQty)}", entity.OnHandQty.Value)
             .SetParameter($"@{nameof(InventoryItem.ReservedQty)}", entity.ReservedQty.Value)
             .SetParameter($"@{nameof(InventoryItem.RowVersion)}", entity.RowVersion);
+    public async Task<PrimitiveResult<InventoryItem[]>> GetByProductIds(ProductId[] ids, CancellationToken cancellationToken)
+    {
+        var command = DapperCommandDefinitionBuilder
+            .Query(GetByProductIdsQuery)
+            .SetParameter("ids", System.Text.Json.JsonSerializer.Serialize(ids.Select(i => i.Value)), System.Data.DbType.String)
+            .Build(cancellationToken);
+        var result = await this.RunDbCommand(
+            async connection =>
+            {
+                var dbResult = await connection.QueryAsync<InventoryItem>(command).ConfigureAwait(false);
+                return dbResult?.ToArray() ?? Array.Empty<InventoryItem>();
+            },
+            cancellationToken)
+            .ConfigureAwait(false);
+
+        return PrimitiveResult.Success(result ?? []);
+    }
+
 }

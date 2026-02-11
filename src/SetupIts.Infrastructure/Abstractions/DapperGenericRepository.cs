@@ -35,14 +35,6 @@ public abstract class DapperGenericRepository
     }
     #endregion
 
-    public virtual async Task<PrimitiveResult> SaveAsync<TEntity, TId>(
-        TEntity entity,
-        Func<DapperCommandDefinitionBuilder> commandBuilder,
-        CancellationToken cancellationToken)
-        where TEntity : EntityBase<TId>
-        where TId : IEquatable<TId>
-        => await this.ExecuteTransactionAsync<TEntity, TId>(commandBuilder.Invoke(), entity, cancellationToken);
-
     public virtual Task<PrimitiveResult<TEntity>> QueryFirstOrDefaultAsync<TEntity, TId>(
         TId id,
         string[] fields,
@@ -143,11 +135,32 @@ public abstract class DapperGenericRepository
 
     public virtual async Task<PrimitiveResult<TOut>> SaveAsync<TEntity, TId, TOut>(
         TEntity entity,
-        Func<DapperCommandDefinitionBuilder> commandBuilder,
+        DapperCommandDefinitionBuilder commandBuilder,
+        SqlTransaction transaction,
         CancellationToken cancellationToken)
         where TEntity : EntityBase<TId>
         where TId : IEquatable<TId>
-        => await this.ExecuteScalarTransactionAsync<TEntity, TId, TOut>(commandBuilder.Invoke(), entity, cancellationToken);
+    {
+        var connection = transaction.Connection;
+
+        var command = commandBuilder
+                   .SetTransaction(transaction)
+                   .Build(cancellationToken);
+
+        var dbResult = await connection.ExecuteScalarAsync(command).ConfigureAwait(false);
+
+        if (dbResult is null)
+        {
+            return PrimitiveResult.InternalFailure<TOut>("Error", "Db null result");
+        }
+
+        await this.AddEntityEvents<TEntity, TId>(entity, transaction);
+
+        if (dbResult is TOut value)
+            return value;
+
+        return PrimitiveResult.InternalFailure<TOut>("Error", "Invalid casting!");
+    }
 
     protected async Task<TOut> RunDbCommand<TOut>(Func<SqlConnection, Task<TOut>> func, CancellationToken cancellationToken)
     {
@@ -197,7 +210,7 @@ public abstract class DapperGenericRepository
                    .Build(cancellationToken);
                 var result = await connection.ExecuteAsync(command).ConfigureAwait(false);
 
-                await this.AddEntityEvents<TEntity, TId>(entity, connection, transaction);
+                await this.AddEntityEvents<TEntity, TId>(entity, transaction);
 
                 return PrimitiveResult.Success();
 
@@ -207,43 +220,7 @@ public abstract class DapperGenericRepository
         return result;
     }
 
-    async Task<PrimitiveResult<TOut>> ExecuteScalarTransactionAsync<TEntity, TId, TOut>(
-        DapperCommandDefinitionBuilder commandBuilder,
-        TEntity entity,
-        CancellationToken cancellationToken)
-        where TEntity : EntityBase<TId>
-        where TId : IEquatable<TId>
-    {
-
-        var result = await this.WithTransactionAsync(
-            async (connection, transaction) =>
-            {
-
-                var command = commandBuilder
-                   .SetTransaction(transaction)
-                   .Build(cancellationToken);
-                var dbResult = await connection.ExecuteScalarAsync(command).ConfigureAwait(false);
-
-                if (dbResult is null)
-                {
-                    return PrimitiveResult.InternalFailure<TOut>("Error", "Db null result");
-                }
-
-                await this.AddEntityEvents<TEntity, TId>(entity, connection, transaction);
-
-                if (dbResult is TOut value)
-                    return value;
-
-                return PrimitiveResult.InternalFailure<TOut>("Error", "Invalid casting!");
-
-            })
-            .ConfigureAwait(false);
-
-        return result;
-    }
-
-
-    async Task<PrimitiveResult> AddEntityEvents<TEntity, TId>(TEntity entity, SqlConnection connection, SqlTransaction transaction)
+    protected async Task<PrimitiveResult> AddEntityEvents<TEntity, TId>(TEntity entity, SqlTransaction transaction)
         where TEntity : EntityBase<TId>
         where TId : IEquatable<TId>
     {
@@ -261,7 +238,7 @@ public abstract class DapperGenericRepository
                 Processed = false
             };
 
-            await connection.ExecuteAsync(
+            await transaction.Connection.ExecuteAsync(
                 @"INSERT INTO OutboxMessage (Id, OccurredAt, Type, Data, IsIntegrationEvent, Processed)
                       VALUES (@Id, @OccurredAt, @Type, @Data, @IsIntegrationEvent, @Processed)",
                 outbox,

@@ -9,6 +9,7 @@ public interface IOrderService
     Task<PrimitiveResult<OrderId>> CreateOrder(CreateOrderRequest request, CancellationToken cancellationToken);
     Task<PrimitiveResult> ConfirmOrder(ConfirmOrderRequest request, CancellationToken cancellationToken);
     Task<PrimitiveResult> CancelOrder(CancelOrderRequest request, CancellationToken cancellationToken);
+
     Task<PrimitiveResult<OrderReadModel>> GetOne(OrderId Id, CancellationToken cancellationToken);
 }
 public sealed record CreateOrderRequest(int CustomerId, OrderItemCreateData[] OrderItems);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SetupIts.Application;
+using SetupIts.Domain.ValueObjects;
 using SetupIts.Hosting;
 
 namespace SetuIts.Tests.Integration;
@@ -12,6 +13,10 @@ public abstract class IntegrationTestBase
 {
     public IServiceProvider ServiceProvider { get; }
     public IConfiguration Configuration { get; }
+
+    protected ProductId _productId1 = ProductId.Create("01KH5WPMCQW2DNBF72KZXF0NZW");
+    protected ProductId _productId2 = ProductId.Create("01KH5WQB3BKV45TW1QCMC9FWSN");
+
     protected IntegrationTestBase()
     {
         this.Configuration = new ConfigurationBuilder()
@@ -51,7 +56,7 @@ public abstract class IntegrationTestBase
         var result = await func.Invoke(connection).ConfigureAwait(false);
         return result;
     }
-    protected TRepository GetRepository<TRepository>() where TRepository : class
+    protected TRepository GetService<TRepository>() where TRepository : class
     {
         var result = this.ServiceProvider.GetRequiredService<TRepository>();
         return result;

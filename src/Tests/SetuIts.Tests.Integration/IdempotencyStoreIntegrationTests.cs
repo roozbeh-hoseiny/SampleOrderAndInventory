@@ -18,7 +18,7 @@ public sealed class IdempotencyStoreIntegrationTests : IntegrationTestBase
 
     public IdempotencyStoreIntegrationTests()
     {
-        this._idempotencyStore = this.GetRepository<IIdempotencyStore>();
+        this._idempotencyStore = this.GetService<IIdempotencyStore>();
     }
 
     [Fact]

@@ -63,6 +63,9 @@ public sealed class InventoryItem : AggregateRoot<InventoryItemId>
         if (qty == Quantity.Zero)
             return PrimitiveResult.Success();
 
+        if (qty > this.ReservedQty)
+            return PrimitiveResult.Failure("Error", "Not enough available inventory");
+
         return this.ReservedQty.Decrease(qty)
             .Map(newQuantity =>
             {
