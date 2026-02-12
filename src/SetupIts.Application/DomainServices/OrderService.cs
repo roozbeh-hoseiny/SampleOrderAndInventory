@@ -69,7 +69,7 @@ internal sealed class OrderService : IOrderService
         if (order.IsFailure) return PrimitiveResult.Failure(order.Errors);
 
         var orderConfirmResult = order.Value.Confirm();
-        if (orderConfirmResult.IsFailure) PrimitiveResult.Failure(orderConfirmResult.Errors);
+        if (orderConfirmResult.IsFailure) return PrimitiveResult.Failure(orderConfirmResult.Errors);
 
         // 2. Collect all product Ids from order items
         HashSet<ProductId> productIds = order.Value.OrderItems.Select(i => i.ProductId).ToHashSet();
@@ -116,10 +116,83 @@ internal sealed class OrderService : IOrderService
     }
 
 
-    public Task<PrimitiveResult> CancelOrder(CancelOrderRequest request, CancellationToken cancellationToken) =>
-        this.ChangeOrderStatus(request.Id, order => order.Cancel(), cancellationToken);
+    public async Task<PrimitiveResult> CancelOrder(
+    CancelOrderRequest request,
+    CancellationToken cancellationToken)
+    {
+        // 1. Fetch the order
+        var order = await this._orderWriteRepository
+            .GetOne(request.Id, cancellationToken)
+            .ConfigureAwait(false);
 
-    public async Task<PrimitiveResult<OrderReadModel>> GetOne(OrderId Id, CancellationToken cancellationToken) => await this._orderReadRepository.GetOne(Id, cancellationToken);
+        if (order.IsFailure)
+            return PrimitiveResult.Failure(order.Errors);
+
+        // 2. Cancel order (domain rule)
+        var cancelResult = order.Value.Cancel();
+        if (cancelResult.IsFailure)
+            return PrimitiveResult.Failure(cancelResult.Errors);
+
+        // 3. Collect product ids
+        HashSet<ProductId> productIds =
+            order.Value.OrderItems
+                .Select(i => i.ProductId)
+                .ToHashSet();
+
+        // 4. Fetch inventory items
+        var inventoriesResult = await this._inventoryRepository
+            .GetByProductIds(productIds.ToArray(), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (inventoriesResult.IsFailure)
+            return PrimitiveResult.Failure(inventoriesResult.Errors);
+
+        var inventoryDict =
+            inventoriesResult.Value.ToDictionary(i => i.ProductId);
+
+        // 5. Release reserved inventory
+        foreach (var item in order.Value.OrderItems)
+        {
+            if (!inventoryDict.TryGetValue(item.ProductId, out var inventory))
+                return PrimitiveResult.Failure("", "Inventory record not found");
+
+            var releaseResult = inventory.Release(item.Qty);
+            if (releaseResult.IsFailure)
+                return PrimitiveResult.Failure(releaseResult.Errors);
+        }
+
+        // 6. Persist changes atomically
+        return await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            foreach (var (_, inventory) in inventoryDict)
+            {
+                var inventoryUpdateResult =
+                    await this._unitOfWork.InventoryRepository
+                        .UpdateReservedQty(inventory, cancellationToken)
+                        .ConfigureAwait(false);
+
+                if (inventoryUpdateResult.IsFailure)
+                    return PrimitiveResult.Failure(
+                        "Error",
+                        "Can not update inventory status");
+            }
+
+            var orderStatusChangeResult =
+                await this._orderWriteRepository
+                    .UpdateStatus(order.Value, cancellationToken)
+                    .ConfigureAwait(false);
+
+            return orderStatusChangeResult.IsSuccess
+                ? PrimitiveResult.Success()
+                : PrimitiveResult.Failure(orderStatusChangeResult.Errors);
+        });
+    }
+
+
+    public async Task<PrimitiveResult<OrderReadModel>> GetOne(OrderId Id, CancellationToken cancellationToken)
+    {
+        return await this._orderReadRepository.GetOne(Id, cancellationToken);
+    }
 
 
     async Task<PrimitiveResult> ChangeOrderStatus(

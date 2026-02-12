@@ -156,6 +156,32 @@ public sealed class IdempotencyStore : DapperGenericRepository, IIdempotencyStor
         }
     }
 
-    public Task CompleteAsync(Guid key, int statusCode, string responseBody) => throw new NotImplementedException();
-    public Task FailedAsync(Guid key, string reason) => throw new NotImplementedException();
+    public async Task CompleteAsync(Guid key, int statusCode, string responseBody)
+    {
+        var updateResult = await this.RunDbCommand(async connection =>
+        {
+            var dbResult = await connection.ExecuteAsync(
+                DapperCommandDefinitionBuilder
+                    .Query($"UPDATE  {TABLE_NAME} SET {nameof(IdempotencyModel.Status)} = @{nameof(IdempotencyModel.Status)},{nameof(IdempotencyModel.ResponseCode)} = @{nameof(IdempotencyModel.ResponseCode)}, {nameof(IdempotencyModel.ResponseBody)} = @{nameof(IdempotencyModel.ResponseBody)} WHERE {nameof(IdempotencyModel.Id)} = @{nameof(IdempotencyModel.Id)}")
+                    .SetParameter($"@{nameof(IdempotencyModel.Id)}", key)
+                    .SetParameter($"@{nameof(IdempotencyModel.Status)}", IdempotencyStatus.Completed)
+                    .SetParameter($"@{nameof(IdempotencyModel.ResponseCode)}", statusCode)
+                    .SetParameter($"@{nameof(IdempotencyModel.ResponseBody)}", responseBody)
+                    .Build());
+            return dbResult > 0 ? PrimitiveResult.Success() : PrimitiveResult.InternalFailure("Error", "Can not update idempotency model");
+        }, CancellationToken.None).ConfigureAwait(false);
+    }
+    public async Task FailedAsync(Guid key, string reason)
+    {
+        var updateResult = await this.RunDbCommand(async connection =>
+        {
+            var dbResult = await connection.ExecuteAsync(
+                DapperCommandDefinitionBuilder
+                    .Query($"UPDATE  {TABLE_NAME} SET {nameof(IdempotencyModel.Status)} = @{nameof(IdempotencyModel.Status)}, {nameof(IdempotencyModel.ResponseBody)} = @{nameof(IdempotencyModel.ResponseBody)} WHERE {nameof(IdempotencyModel.Id)} = @{nameof(IdempotencyModel.Id)}")
+                    .SetParameter($"@{nameof(IdempotencyModel.Id)}", key)
+                    .SetParameter($"@{nameof(IdempotencyModel.Status)}", IdempotencyStatus.Failed)
+                    .Build());
+            return dbResult > 0 ? PrimitiveResult.Success() : PrimitiveResult.InternalFailure("Error", "Can not update idempotency model");
+        }, CancellationToken.None).ConfigureAwait(false);
+    }
 }

@@ -1,5 +1,5 @@
 ﻿namespace SetupIts.Shared.Primitives;
-public sealed class PrimitiveResult
+public sealed class PrimitiveResult : IPrimitiveResult
 {
     #region " Fields "
     private bool _isSuccess = false;

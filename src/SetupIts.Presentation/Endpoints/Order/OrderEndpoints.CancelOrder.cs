@@ -1,29 +1,28 @@
 ﻿using MediatR;
+using SetupIts.Application.Orders.Cancel;
 using SetupIts.Presentation.AppCore;
-using SetupIts.Presentation.Endpoints.Order.Contracts;
 
 namespace SetupIts.Presentation.Endpoints;
 
 public static partial class OrderEndpoints
 {
-    static void AddCreateOrderEndpoint()
+    static void AddCancelOrderEndpoint()
     {
         _routeHandlerBuilders.Add((app) =>
         {
-            var builder = app.MapPost(string.Empty,
+            var builder = app.MapPost("{OrderId}/cancel",
                 async (
-                    CreateOrderApiRequest request,
+                    string orderId,
                     ISender sender,
                     IResultHandler resultHandler,
                     CancellationToken cancellationToken) =>
                     {
                         var result = await sender.Send(
-                        CreateOrderApiRequest.Map(request),
+                        new CancelOrderCommand() { Id = orderId },
                         cancellationToken).ConfigureAwait(false);
+                        return resultHandler.Handle(result, v => Results.NoContent());
 
-                        return resultHandler.Handle(result, v => Results.Created("", v.OrderId));
-
-                    }).RequireRateLimiting("CreateOrderRateLimitPolicy");
+                    });
             return builder;
         });
     }

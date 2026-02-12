@@ -2,6 +2,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenTelemetry.Trace;
+using SetupIts.Application.ClientIpContext;
 using SetupIts.Domain;
 using SetupIts.Domain.Abstractios;
 using SetupIts.Domain.Aggregates.Ordering.Persistence;
@@ -22,12 +24,14 @@ public sealed class ProjectServiceInstaller : IServiceInstaller
     {
         AddAllDapperTypeHandlers();
 
+        services.AddSingleton<IClientIpContext, ClientIpContext>();
+
         return services
             .AddGlobalOptions(config)
             .AddRepositories()
             .AddSpecifications()
             .AddUnitOfWork()
-            ;
+            .AddObservability(config);
     }
 
     static void AddAllDapperTypeHandlers()
@@ -94,4 +98,21 @@ static class ServiceCollectionExtension
 
         return services;
     }
+    public static IServiceCollection AddObservability(
+        this IServiceCollection services,
+        IConfiguration config)
+    {
+        services.AddOpenTelemetry()
+            .WithTracing(builder =>
+            {
+                builder
+                    .AddSource(ActivitySources.MediatR)
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddOtlpExporter();
+            });
+
+        return services;
+    }
+
 }

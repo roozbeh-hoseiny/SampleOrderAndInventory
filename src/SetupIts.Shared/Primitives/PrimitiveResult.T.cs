@@ -1,5 +1,5 @@
 ﻿namespace SetupIts.Shared.Primitives;
-public sealed class PrimitiveResult<TValue>
+public sealed class PrimitiveResult<TValue> : IPrimitiveResult<TValue>
 {
     #region " Fields "
     private TValue? _value { get; set; }

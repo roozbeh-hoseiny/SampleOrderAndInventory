@@ -4,6 +4,7 @@ using SetupIts.Application;
 using SetupIts.Hosting;
 using SetupIts.Infrastructure;
 using SetupIts.Presentation.AppCore;
+using SetupIts.Presentation.Ratelimits;
 using System.Reflection;
 
 namespace SetupIts.Presentation.DI;
@@ -36,6 +37,13 @@ sealed class ProjectServiceInstaller : IServiceInstaller
             .InstallApiVersioning()
             .AddCors()
             .InstallGlobalExceptionHandler();
+
+        services.AddRateLimiter(opts =>
+        {
+            opts.AddPolicy<string, CreateOrderRateLimitPolicy>("CreateOrderRateLimitPolicy");
+        });
+
+
 
         return services;
     }

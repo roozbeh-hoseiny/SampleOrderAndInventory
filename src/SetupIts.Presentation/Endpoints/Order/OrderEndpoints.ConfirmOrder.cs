@@ -1,29 +1,29 @@
 ﻿using MediatR;
+using SetupIts.Application.Orders.Confirm;
 using SetupIts.Presentation.AppCore;
-using SetupIts.Presentation.Endpoints.Order.Contracts;
 
 namespace SetupIts.Presentation.Endpoints;
 
 public static partial class OrderEndpoints
 {
-    static void AddCreateOrderEndpoint()
+    static void AddConfimOrderEndpoint()
     {
         _routeHandlerBuilders.Add((app) =>
         {
-            var builder = app.MapPost(string.Empty,
+            var builder = app.MapPut("{OrderId}/confirm",
                 async (
-                    CreateOrderApiRequest request,
+                    string orderId,
                     ISender sender,
                     IResultHandler resultHandler,
                     CancellationToken cancellationToken) =>
                     {
                         var result = await sender.Send(
-                        CreateOrderApiRequest.Map(request),
+                        new ConfirmOrderCommand() { Id = orderId },
                         cancellationToken).ConfigureAwait(false);
 
-                        return resultHandler.Handle(result, v => Results.Created("", v.OrderId));
+                        return resultHandler.Handle(result, v => Results.NoContent());
 
-                    }).RequireRateLimiting("CreateOrderRateLimitPolicy");
+                    });
             return builder;
         });
     }

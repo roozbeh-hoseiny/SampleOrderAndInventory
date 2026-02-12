@@ -6,7 +6,9 @@ public static partial class OrderEndpoints
     static OrderEndpoints()
     {
         AddCreateOrderEndpoint();
-
+        AddConfimOrderEndpoint();
+        AddCancelOrderEndpoint();
+        AddGetOneEndpoint();
     }
     public static void AddAllEndpoitnts(WebApplication app, RouteGroupBuilder? group = null)
     {

@@ -1,6 +1,7 @@
 ﻿using Asp.Versioning.Builder;
 using Microsoft.AspNetCore.Antiforgery;
 using SetupIts.Presentation.Endpoints;
+using SetupIts.Presentation.Middlewares;
 
 namespace SetupIts.Presentation;
 
@@ -48,9 +49,10 @@ public static class WebAppExtension
             policy.SetPreflightMaxAge(TimeSpan.FromMinutes(12));
             policy.WithExposedHeaders("Content-Disposition");
         });
-        app.UseResponseCaching(); // ✅ must come before routing & endpoint execution & after cors
-
+        app.UseResponseCaching();
         app.AddApiVersioning();
+        app.UseMiddleware<ClientIpMiddleware>();
+        app.UseMiddleware<IdempotencyMiddleware>();
     }
 
     static void AddApiVersioning(this WebApplication app)
@@ -67,7 +69,7 @@ public static class WebAppExtension
 
     private static void AddAllEndpoints(WebApplication app, RouteGroupBuilder versionedGroup)
     {
-        var orderGroup = versionedGroup.MapGroup("/order");
+        var orderGroup = versionedGroup.MapGroup("/orders");
         var inventory = versionedGroup.MapGroup("/inventory");
 
         OrderEndpoints.AddAllEndpoitnts(app, orderGroup);

@@ -7,6 +7,7 @@
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="MediatR" />
+		
 		<ProjectReference Include="..\SetupIts.Domain\SetupIts.Domain\SetupIts.Domain.csproj" />
 		<ProjectReference Include="..\SetupIts.Hosting\SetupIts.Hosting.csproj" />
 		<ProjectReference Include="..\SetupIts.Shared\SetupIts.Shared.csproj" />

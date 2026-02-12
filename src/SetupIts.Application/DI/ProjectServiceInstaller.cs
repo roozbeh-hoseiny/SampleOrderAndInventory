@@ -1,6 +1,8 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using MediatR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SetupIts.Application.Behaviors;
 using SetupIts.Application.DomainServices;
 using SetupIts.Domain.DomainServices;
 using SetupIts.Hosting;
@@ -32,12 +34,8 @@ static class ServiceCollectionExtension
         services.AddMediatR(config =>
         {
             config.RegisterServicesFromAssemblies(Assembly.GetExecutingAssembly(), ApplicationAssemblyReference.Assembly);
-            //config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ExceptionHandlingBehaviour<,>));
-            //config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(HandlerTraceBehaviour<,>));
-            //config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(RequestLoggingBehaviour<,>));
-            //config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehaviour<,>));
-            //config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(FluentValidationBehaviour<,>));
-            //config.AddBehavior(typeof(IRequestExceptionHandler<,,>), typeof(ValidationExceptionHandlerBehaviour<,,>));
+            config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ExceptionBehavior<,>));
+            config.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TracingBehavior<,>));
         });
         return services;
     }

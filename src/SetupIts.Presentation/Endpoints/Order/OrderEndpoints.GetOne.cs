@@ -1,29 +1,27 @@
 ﻿using MediatR;
+using SetupIts.Application.Orders.GetOne;
 using SetupIts.Presentation.AppCore;
-using SetupIts.Presentation.Endpoints.Order.Contracts;
 
 namespace SetupIts.Presentation.Endpoints;
 
 public static partial class OrderEndpoints
 {
-    static void AddCreateOrderEndpoint()
+    static void AddGetOneEndpoint()
     {
         _routeHandlerBuilders.Add((app) =>
         {
-            var builder = app.MapPost(string.Empty,
+            var builder = app.MapGet("{OrderId}",
                 async (
-                    CreateOrderApiRequest request,
+                    string orderId,
                     ISender sender,
                     IResultHandler resultHandler,
                     CancellationToken cancellationToken) =>
                     {
                         var result = await sender.Send(
-                        CreateOrderApiRequest.Map(request),
+                        new GetOneQuery() { Id = orderId },
                         cancellationToken).ConfigureAwait(false);
-
-                        return resultHandler.Handle(result, v => Results.Created("", v.OrderId));
-
-                    }).RequireRateLimiting("CreateOrderRateLimitPolicy");
+                        return resultHandler.Handle(result, v => Results.Ok(v));
+                    });
             return builder;
         });
     }

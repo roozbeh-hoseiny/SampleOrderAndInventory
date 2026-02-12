@@ -101,6 +101,7 @@ public sealed class Order : AggregateRoot<OrderId>
     public PrimitiveResult Cancel()
     {
         if (this.Status.Equals(OrderStatuses.Cancelled)) return PrimitiveResult.Failure("Error", "Cancelled order can not be cancelled again!");
+        if (!this.Status.Equals(OrderStatuses.Confirmed)) return PrimitiveResult.Failure("Error", "this order is not confirmed yet!");
 
         this.Status = OrderStatuses.Cancelled;
 
