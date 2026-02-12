@@ -1,4 +1,5 @@
-﻿using SetupIts.Domain;
+﻿using Microsoft.Extensions.Logging;
+using SetupIts.Domain;
 using SetupIts.Domain.Aggregates.Inventory.Persistence;
 using SetupIts.Domain.Aggregates.Ordering;
 using SetupIts.Domain.Aggregates.Ordering.Persistence;
@@ -17,6 +18,7 @@ internal sealed class OrderService : IOrderService
     private readonly IValidCustomerSpecification _validCustomerSpecification;
     private readonly IValidProductSpecification _validProductSpecification;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<OrderService> _logger;
     #endregion
 
     public OrderService(
@@ -25,7 +27,8 @@ internal sealed class OrderService : IOrderService
         IInventoryRepository inventoryRepository,
         IValidCustomerSpecification validCustomerSpecification,
         IValidProductSpecification validProductSpecification,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ILogger<OrderService> logger)
     {
         this._orderWriteRepository = orderWriteRepository;
         this._orderReadRepository = orderReadRepository;
@@ -33,6 +36,7 @@ internal sealed class OrderService : IOrderService
         this._validCustomerSpecification = validCustomerSpecification;
         this._validProductSpecification = validProductSpecification;
         this._unitOfWork = unitOfWork;
+        this._logger = logger;
     }
 
     public async Task<PrimitiveResult<OrderId>> CreateOrder(CreateOrderRequest request, CancellationToken cancellationToken)
@@ -51,10 +55,11 @@ internal sealed class OrderService : IOrderService
         if (newOrder.IsFailure)
             return PrimitiveResult.Failure<OrderId>(newOrder.Errors);
 
-
         var repoResult = await this._unitOfWork
             .ExecuteInTransactionAsync(() => this._orderWriteRepository.Add(newOrder.Value, cancellationToken))
             .ConfigureAwait(false);
+
+        this._logger.LogInformation("An order with id:{order_id} created", newOrder.Value.Id);
 
         if (repoResult.IsFailure)
             return PrimitiveResult.Failure<OrderId>(repoResult.Errors);
@@ -111,7 +116,16 @@ internal sealed class OrderService : IOrderService
                 .UpdateStatus(order.Value, cancellationToken)
                 .ConfigureAwait(false);
 
-            return orderStatusChangeResult.IsSuccess ? PrimitiveResult.Success() : PrimitiveResult.Failure(orderStatusChangeResult.Errors);
+            if (orderStatusChangeResult.IsSuccess)
+            {
+                this._logger.LogInformation("An order with id:{order_id} confirmed", request.Id.Value);
+                return PrimitiveResult.Success();
+            }
+            this._logger.LogError("error in confirming order with id:{order_id}. {@errors}",
+                request.Id.Value,
+                orderStatusChangeResult.Errors);
+
+            return PrimitiveResult.Failure(orderStatusChangeResult.Errors);
         });
     }
 

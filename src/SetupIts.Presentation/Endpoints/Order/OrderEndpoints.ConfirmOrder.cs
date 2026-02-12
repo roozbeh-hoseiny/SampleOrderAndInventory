@@ -10,7 +10,7 @@ public static partial class OrderEndpoints
     {
         _routeHandlerBuilders.Add((app) =>
         {
-            var builder = app.MapPut("{OrderId}/confirm",
+            var builder = app.MapPost("{OrderId}/confirm",
                 async (
                     string orderId,
                     ISender sender,

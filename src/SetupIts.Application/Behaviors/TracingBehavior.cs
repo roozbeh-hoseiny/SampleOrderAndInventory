@@ -1,5 +1,6 @@
 ﻿namespace SetupIts.Application.Behaviors;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using SetupIts.Hosting;
 using SetupIts.Shared.Primitives;
 using System.Diagnostics;
@@ -9,6 +10,12 @@ public sealed class TracingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
     where TRequest : notnull
 {
     private static readonly ActivitySource ActivitySource = new(ActivitySources.MediatR);
+
+    private readonly ILogger _logger;
+    public TracingBehavior(ILoggerFactory loggerFactory)
+    {
+        this._logger = loggerFactory.CreateLogger("TracingBehavior");
+    }
 
     public async Task<TResponse> Handle(
         TRequest request,
@@ -45,6 +52,7 @@ public sealed class TracingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
         }
         catch (Exception ex)
         {
+            this._logger.LogError(ex, ex.Message);
             activity?.AddException(ex, timestamp: DateTimeOffset.Now);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;
@@ -55,6 +63,12 @@ public sealed class TracingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
 public sealed class ExceptionBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
+    private readonly ILogger _logger;
+    public ExceptionBehavior(ILoggerFactory loggerFactory)
+    {
+        this._logger = loggerFactory.CreateLogger("ExceptionBehavior");
+    }
+
     public async Task<TResponse> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
@@ -66,6 +80,7 @@ public sealed class ExceptionBehavior<TRequest, TResponse> : IPipelineBehavior<T
         }
         catch (Exception ex)
         {
+            this._logger.LogError(ex, ex.Message);
             if (typeof(TResponse).IsGenericType &&
                 typeof(TResponse).GetGenericTypeDefinition() == typeof(PrimitiveResult<>))
             {

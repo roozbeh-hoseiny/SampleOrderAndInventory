@@ -66,7 +66,6 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         WHERE 
             {nameof(Order.Id)} = @{nameof(Order.Id)}
             AND {nameof(Order.RowVersion)} = @{nameof(Order.RowVersion)}
-        
         """;
     const string GetOneWithOrdersQuery = $"""
         SELECT 
@@ -124,7 +123,6 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
     }
     public async Task<PrimitiveResult<byte[]>> UpdateStatus(Order entity, CancellationToken cancellationToken)
     {
-
         var result = await this.SaveAsync<Order, OrderId, byte[]>(
            entity,
            DapperCommandDefinitionBuilder

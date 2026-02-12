@@ -11,16 +11,19 @@ public class IdempotencyMiddleware
     private readonly RequestDelegate _next;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly IOptions<SetupItsGlobalOptions> _opts;
+    private readonly ILogger<IdempotencyMiddleware> _logger;
     private readonly TimeSpan _timeout;
 
     public IdempotencyMiddleware(
         RequestDelegate next,
         IServiceScopeFactory serviceScopeFactory,
-        IOptions<SetupItsGlobalOptions> opts)
+        IOptions<SetupItsGlobalOptions> opts,
+        ILogger<IdempotencyMiddleware> logger)
     {
         this._next = next;
         this._serviceScopeFactory = serviceScopeFactory;
         this._opts = opts;
+        this._logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -56,11 +59,12 @@ public class IdempotencyMiddleware
         try
         {
             await this._next(context);
-            var responseBodyContent = await this.ReadResponseBodyAsync(context.Response);
+            var responseBodyContent = await ReadResponseBodyAsync(context.Response);
             await store.CompleteAsync(key, context.Response.StatusCode, responseBodyContent);
         }
         catch (Exception ex)
         {
+            this._logger.LogError(ex, ex.Message);
             await store.FailedAsync(key, ex.Message);
             throw;
         }
@@ -68,35 +72,8 @@ public class IdempotencyMiddleware
         {
             await responseBody.CopyToAsync(originalBodyStream);
         }
-
-
-        //var originalBody = context.Response.Body;
-        //using var mem = new MemoryStream();
-        //context.Response.Body = mem;
-
-        //try
-        //{
-        //    await this._next(context);
-
-        //    mem.Position = 0;
-        //    var body = await new StreamReader(mem).ReadToEndAsync();
-        //    await store.CompleteAsync(key, context.Response.StatusCode, body);
-
-        //    mem.Position = 0;
-        //    await mem.CopyToAsync(originalBody);
-        //}
-        //catch (Exception ex)
-        //{
-        //    await store.FailedAsync(key, ex.Message);
-        //    throw;
-        //}
-        //finally
-        //{
-        //    context.Response.Body = originalBody;
-        //}
     }
-
-    private static async Task<byte[]> ComputeRequestHashAsync(HttpContext context)
+    static async Task<byte[]> ComputeRequestHashAsync(HttpContext context)
     {
         context.Request.EnableBuffering();
 
@@ -107,7 +84,7 @@ public class IdempotencyMiddleware
         using var sha = SHA256.Create();
         return sha.ComputeHash(ms.ToArray());
     }
-    private async Task<string> ReadResponseBodyAsync(HttpResponse response)
+    static async Task<string> ReadResponseBodyAsync(HttpResponse response)
     {
         response.Body.Seek(0, SeekOrigin.Begin);
         var text = await new StreamReader(response.Body).ReadToEndAsync();
