@@ -53,6 +53,7 @@ public static class WebAppExtension
         app.AddApiVersioning();
         app.UseMiddleware<ClientIpMiddleware>();
         app.UseMiddleware<IdempotencyMiddleware>();
+        app.MapHealthChecks("/health");
     }
 
     static void AddApiVersioning(this WebApplication app)

@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Trace;
 using SetupIts.Application.ClientIpContext;
 using SetupIts.Domain;
@@ -25,6 +26,14 @@ public sealed class ProjectServiceInstaller : IServiceInstaller
         AddAllDapperTypeHandlers();
 
         services.AddSingleton<IClientIpContext, ClientIpContext>();
+
+        services.AddHealthChecks()
+            .AddSqlServer(
+                connectionString: config.GetSection("GlobalOptions").Get<SetupItsGlobalOptions>()!.ConnectionString!,
+                healthQuery: "SELECT 1",
+                name: "sqlserver",
+                failureStatus: HealthStatus.Unhealthy,
+                timeout: TimeSpan.FromSeconds(5));
 
         return services
             .AddGlobalOptions(config)
