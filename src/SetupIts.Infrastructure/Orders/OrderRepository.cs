@@ -59,8 +59,6 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         FROM {TableNames.OrderItem_TableName}
         WHERE {TableNames.OrderItem_TableName}.{nameof(OrderItem.OrderId)}  = @{nameof(Order.Id)} 
         """;
-    private readonly ICurrentTransactionScope _currentTransactionScope;
-    private readonly IOptionsMonitor<SetupItsGlobalOptions> _opts;
     const string ChangeStatusCommand = $"""
         UPDATE {TableNames.Order_TableName}
         SET [Status] = @Status
@@ -88,12 +86,9 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
         """;
     public string TableName => TableNames.Order_TableName;
 
-    public OrderRepository(ICurrentTransactionScope currentTransactionScope, IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
-    {
-        this._currentTransactionScope = currentTransactionScope;
-        this._opts = opts;
-    }
-
+    public OrderRepository(
+        ICurrentTransactionScope currentTransactionScope,
+        IOptionsMonitor<SetupItsGlobalOptions> opts) : base(currentTransactionScope, opts) { }
 
     public async Task<PrimitiveResult<byte[]>> Add(Order entity, CancellationToken cancellationToken)
     {
@@ -129,7 +124,6 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
     }
     public async Task<PrimitiveResult<byte[]>> UpdateStatus(Order entity, CancellationToken cancellationToken)
     {
-        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
 
         var result = await this.SaveAsync<Order, OrderId, byte[]>(
            entity,
@@ -138,7 +132,6 @@ public sealed class OrderRepository : DapperGenericRepository, IOrderRepository
             .SetParameter(nameof(Order.Id), entity.Id.Value)
             .SetParameter(nameof(Order.RowVersion), entity.RowVersion)
             .SetParameter(nameof(Order.Status), entity.Status),
-           currentTransaction,
            cancellationToken)
            .ConfigureAwait(false);
 

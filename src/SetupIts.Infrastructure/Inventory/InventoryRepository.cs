@@ -61,31 +61,25 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
         """;
     #endregion
 
-    #region " Fields "
-    private readonly ICurrentTransactionScope _currentTransactionScope;
-    #endregion
-
     #region " Properties "
     public string TableName => TableNames.InventoryItem_TableName;
     #endregion
 
     #region " Constructor "
-    public InventoryRepository(ICurrentTransactionScope currentTransactionScope, IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts)
-    {
-        this._currentTransactionScope = currentTransactionScope;
-    }
+    public InventoryRepository(
+        ICurrentTransactionScope currentTransactionScope,
+        IOptionsMonitor<SetupItsGlobalOptions> opts) : base(currentTransactionScope, opts) { }
+
     #endregion
 
     public async Task<PrimitiveResult<byte[]>> Add(
         InventoryItem entity,
         CancellationToken cancellationToken)
     {
-        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
 
         var result = await this.SaveAsync<InventoryItem, InventoryItemId, byte[]>(
             entity,
             CreateAddAndUpdateInventoryItemCommand(AddInventoryItemCommand, entity),
-            currentTransaction,
             cancellationToken)
             .ConfigureAwait(false);
 
@@ -97,12 +91,10 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
 
     public async Task<PrimitiveResult<byte[]>> Update(InventoryItem entity, CancellationToken cancellationToken)
     {
-        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
 
         var result = await this.SaveAsync<InventoryItem, InventoryItemId, byte[]>(
             entity,
             CreateAddAndUpdateInventoryItemCommand(UpdateInventoryItemCommand, entity),
-            currentTransaction,
             cancellationToken)
             .ConfigureAwait(false);
 
@@ -113,7 +105,6 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
     }
     public async Task<PrimitiveResult> UpdateReservedQty(InventoryItem entity, CancellationToken cancellationToken)
     {
-        var currentTransaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken);
 
         var result = await this.SaveAsync<InventoryItem, InventoryItemId, byte[]>(
             entity,
@@ -122,7 +113,6 @@ public sealed class InventoryRepository : DapperGenericRepository, IInventoryRep
             .SetParameter($"@{nameof(InventoryItem.Id)}", entity.Id.Value)
             .SetParameter($"@{nameof(InventoryItem.ReservedQty)}", entity.ReservedQty.Value)
             .SetParameter($"@{nameof(InventoryItem.RowVersion)}", entity.RowVersion),
-            currentTransaction,
             cancellationToken)
             .ConfigureAwait(false);
 

@@ -22,16 +22,25 @@ public abstract class DapperGenericRepository
 
     #region " Fields "
     private readonly string _connectionString;
+    protected readonly ICurrentTransactionScope _currentTransactionScope;
+    protected readonly IOptionsMonitor<SetupItsGlobalOptions> _opts;
+    private readonly bool _isReadonly;
     #endregion
 
     #region " Constructor "
-    public DapperGenericRepository(IOptionsMonitor<SetupItsGlobalOptions> opts, bool isReadonly = false)
+    public DapperGenericRepository(
+        ICurrentTransactionScope currentTransactionScope,
+        IOptionsMonitor<SetupItsGlobalOptions> opts,
+        bool isReadonly = false)
     {
         var builder = new SqlConnectionStringBuilder(opts.CurrentValue.ConnectionString);
         if (isReadonly)
             builder.ApplicationIntent = ApplicationIntent.ReadOnly;
 
         this._connectionString = builder.ConnectionString;
+        this._currentTransactionScope = currentTransactionScope;
+        this._opts = opts;
+        this._isReadonly = isReadonly;
     }
     #endregion
 
@@ -136,18 +145,21 @@ public abstract class DapperGenericRepository
     public virtual async Task<PrimitiveResult<TOut>> SaveAsync<TEntity, TId, TOut>(
         TEntity entity,
         DapperCommandDefinitionBuilder commandBuilder,
-        SqlTransaction transaction,
         CancellationToken cancellationToken)
         where TEntity : EntityBase<TId>
         where TId : IEquatable<TId>
     {
+        var transaction = await this._currentTransactionScope.GetCurrentTransaction(cancellationToken)
+            .ConfigureAwait(false);
+
         var connection = transaction.Connection;
 
         var command = commandBuilder
                    .SetTransaction(transaction)
                    .Build(cancellationToken);
 
-        var dbResult = await connection.ExecuteScalarAsync(command).ConfigureAwait(false);
+        var dbResult = await connection.ExecuteScalarAsync<TOut>(command)
+            .ConfigureAwait(false);
 
         if (dbResult is null)
         {
@@ -156,10 +168,8 @@ public abstract class DapperGenericRepository
 
         await this.AddEntityEvents<TEntity, TId>(entity, transaction);
 
-        if (dbResult is TOut value)
-            return value;
+        return dbResult!;
 
-        return PrimitiveResult.InternalFailure<TOut>("Error", "Invalid casting!");
     }
 
     protected async Task<TOut> RunDbCommand<TOut>(Func<SqlConnection, Task<TOut>> func, CancellationToken cancellationToken)
@@ -187,34 +197,10 @@ public abstract class DapperGenericRepository
             .SetParameter("Id", id)
             .Build(cancellationToken);
 
+
         var result = await this.WithConnectionAsync(
             (connection) => func.Invoke(connection, command),
             cancellationToken)
-            .ConfigureAwait(false);
-
-        return result;
-    }
-
-    protected async Task<PrimitiveResult> ExecuteTransactionAsync<TEntity, TId>(
-        DapperCommandDefinitionBuilder commandBuilder,
-        TEntity entity,
-        CancellationToken cancellationToken)
-        where TEntity : EntityBase<TId>
-        where TId : IEquatable<TId>
-    {
-        var result = await this.WithTransactionAsync(
-            async (connection, transaction) =>
-            {
-                var command = commandBuilder
-                   .SetTransaction(transaction)
-                   .Build(cancellationToken);
-                var result = await connection.ExecuteAsync(command).ConfigureAwait(false);
-
-                await this.AddEntityEvents<TEntity, TId>(entity, transaction);
-
-                return PrimitiveResult.Success();
-
-            })
             .ConfigureAwait(false);
 
         return result;
@@ -251,7 +237,7 @@ public abstract class DapperGenericRepository
 
     protected async ValueTask<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
     {
-        var connection = new SqlConnection(_connectionString);
+        var connection = new SqlConnection(this._connectionString);
 
         try
         {
@@ -264,34 +250,11 @@ public abstract class DapperGenericRepository
             throw;
         }
     }
-    protected async Task<TResult> WithConnectionAsync<TResult>(Func<SqlConnection, Task<TResult>> action, CancellationToken ct = default)
+    protected async Task<TResult> WithConnectionAsync<TResult>(Func<SqlConnection, Task<TResult>> action, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        var connection = await this._currentTransactionScope.GetCurrentConnection(cancellationToken);
         return await action(connection);
     }
-    protected async Task<TResult> WithTransactionAsync<TResult>(
-        Func<SqlConnection, SqlTransaction, Task<TResult>> action,
-        IsolationLevel isolation = IsolationLevel.ReadCommitted,
-        CancellationToken cancellationToken = default)
-    {
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        await using var transaction = connection.BeginTransaction(isolation);
-
-        try
-        {
-            var result = await action(connection, transaction);
-            await transaction.CommitAsync(cancellationToken);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
-    }
-
 
     protected static string QuoteName(string input)
     {

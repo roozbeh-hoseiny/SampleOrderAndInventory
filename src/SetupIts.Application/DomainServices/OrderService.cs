@@ -96,20 +96,20 @@ internal sealed class OrderService : IOrderService
         }
 
         return await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            foreach (var (_, inventory) in inventoryDict)
             {
-                foreach (var (_, inventory) in inventoryDict)
-                {
-                    var inventoryUpdateResult = await this._unitOfWork.InventoryRepository
-                        .UpdateReservedQty(inventory, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (inventoryUpdateResult.IsFailure) return PrimitiveResult.Failure("Error", "Can not update inventory status");
-                }
-                var orderStatusChangeResult = await this._orderWriteRepository
-                    .UpdateStatus(order.Value, cancellationToken)
+                var inventoryUpdateResult = await this._unitOfWork.InventoryRepository
+                    .UpdateReservedQty(inventory, cancellationToken)
                     .ConfigureAwait(false);
+                if (inventoryUpdateResult.IsFailure) return PrimitiveResult.Failure("Error", "Can not update inventory status");
+            }
+            var orderStatusChangeResult = await this._orderWriteRepository
+                .UpdateStatus(order.Value, cancellationToken)
+                .ConfigureAwait(false);
 
-                return orderStatusChangeResult.IsSuccess ? PrimitiveResult.Success() : PrimitiveResult.Failure(orderStatusChangeResult.Errors);
-            });
+            return orderStatusChangeResult.IsSuccess ? PrimitiveResult.Success() : PrimitiveResult.Failure(orderStatusChangeResult.Errors);
+        });
     }
 
 
@@ -125,7 +125,7 @@ internal sealed class OrderService : IOrderService
         CancellationToken cancellationToken)
     {
         var order = await this._orderWriteRepository.GetOne(id, cancellationToken)
-            .ConfigureAwait(false);
+               .ConfigureAwait(false);
 
         if (order.IsFailure) return PrimitiveResult.Failure(order.Errors);
 
@@ -133,12 +133,17 @@ internal sealed class OrderService : IOrderService
 
         if (changeStatusResult.IsFailure) return PrimitiveResult.Failure(changeStatusResult.Errors);
 
-        var result = await this._orderWriteRepository
-            .UpdateStatus(order.Value, cancellationToken)
-            .ConfigureAwait(false);
+        var result = await this._unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            var result = await this._orderWriteRepository
+                .UpdateStatus(order.Value, cancellationToken)
+                .ConfigureAwait(false);
 
-        if (result.IsFailure) return PrimitiveResult.Failure(changeStatusResult.Errors);
+            if (result.IsFailure) return PrimitiveResult.Failure(changeStatusResult.Errors);
 
-        return PrimitiveResult.Success();
+            return PrimitiveResult.Success();
+        });
+        return result;
+
     }
 }

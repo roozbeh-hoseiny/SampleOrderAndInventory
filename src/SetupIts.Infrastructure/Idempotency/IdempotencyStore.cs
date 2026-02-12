@@ -45,11 +45,13 @@ public sealed class IdempotencyStore : DapperGenericRepository, IIdempotencyStor
     private readonly ILogger<IdempotencyStore> _logger;
 
     public IdempotencyStore(
+        ICurrentTransactionScope currentTransactionScope,
         IOptionsMonitor<SetupItsGlobalOptions> opts,
-        ILogger<IdempotencyStore> logger) : base(opts)
+        ILogger<IdempotencyStore> logger) : base(currentTransactionScope, opts)
     {
         this._logger = logger;
     }
+
 
     public async Task<PrimitiveResult<IdempotencyModel>> GetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -73,19 +75,20 @@ public sealed class IdempotencyStore : DapperGenericRepository, IIdempotencyStor
         try
         {
             var newRecord = IdempotencyModel.Create(id, requestHash, expiryTime);
-            var insertResult = await this.ExecuteTransactionAsync<IdempotencyModel, Guid>(
-                DapperCommandDefinitionBuilder
+
+            var insertResult = await this.WithConnectionAsync(connection => connection.ExecuteAsync(
+                    DapperCommandDefinitionBuilder
                     .Query(AddIdempotencyQuery)
                     .SetParameter($"@{nameof(IdempotencyModel.Id)}", newRecord.Id)
                     .SetParameter($"@{nameof(IdempotencyModel.RequestHash)}", newRecord.RequestHash)
                     .SetParameter($"@{nameof(IdempotencyModel.Status)}", newRecord.Status)
                     .SetParameter($"@{nameof(IdempotencyModel.CreatedAt)}", newRecord.CreatedAt)
                     .SetParameter($"@{nameof(IdempotencyModel.UpdatedAt)}", newRecord.UpdatedAt)
-                    .SetParameter($"@{nameof(IdempotencyModel.ExpireAt)}", newRecord.ExpireAt),
-                newRecord,
-                cancellationToken)
+                    .SetParameter($"@{nameof(IdempotencyModel.ExpireAt)}", newRecord.ExpireAt)
+                    .Build(cancellationToken)), cancellationToken)
                 .ConfigureAwait(false);
-            if (insertResult.IsSuccess)
+
+            if (insertResult > 0)
             {
                 return newRecord;
             }

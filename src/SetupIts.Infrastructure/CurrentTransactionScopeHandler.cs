@@ -13,140 +13,139 @@ public sealed class CurrentTransactionScopeHandler : ICurrentTransactionScope, I
 
     public CurrentTransactionScopeHandler(IOptionsMonitor<SetupItsGlobalOptions> opts)
     {
-        _opts = opts;
+        this._opts = opts;
     }
 
     public async Task SetCurrentTransaction(SqlTransaction transaction)
     {
-        if (_currentTransaction is not null)
+        if (this._currentTransaction is not null)
         {
-            await RollbackCurrentTransaction();
+            await this.RollbackCurrentTransaction();
         }
 
-        _currentTransaction = transaction;
-        _connection = transaction.Connection;
+        this._currentTransaction = transaction;
+        this._connection = transaction.Connection;
     }
 
 
     public async Task CommitCurrentTransaction()
     {
-        if (_currentTransaction is null)
+        if (this._currentTransaction is null)
             throw new InvalidOperationException("No active transaction to commit.");
 
-        await _currentTransaction.CommitAsync();
-        await DisposeTransactionAndConnection();
+        await this._currentTransaction.CommitAsync();
+        await this.DisposeTransactionAndConnection();
     }
 
     public async Task RollbackCurrentTransaction()
     {
-        if (_currentTransaction is null)
+        if (this._currentTransaction is null)
             throw new InvalidOperationException("No active transaction to rollback.");
 
-        await _currentTransaction.RollbackAsync();
-        await DisposeTransactionAndConnection();
+        await this._currentTransaction.RollbackAsync();
+        await this.DisposeTransactionAndConnection();
     }
 
     public async ValueTask<SqlTransaction> GetCurrentTransaction(CancellationToken cancellationToken, bool requireExisting = false)
     {
-        if (_currentTransaction is not null)
-            return _currentTransaction;
+        if (this._currentTransaction is not null)
+            return this._currentTransaction;
 
         if (requireExisting)
             throw new InvalidOperationException("No active transaction scope.");
 
-        var connectionString = _opts.CurrentValue.ConnectionString;
+        await this.GetCurrentConnection(cancellationToken, requireExisting).ConfigureAwait(false);
 
-        _connection = new SqlConnection(connectionString);
-        await _connection.OpenAsync(cancellationToken);
+        if (this._connection is null) throw new InvalidOperationException("No active connection.");
 
-        _currentTransaction = _connection.BeginTransaction();
-        return _currentTransaction;
+        this._currentTransaction = this._connection.BeginTransaction();
+        return this._currentTransaction;
     }
     public async ValueTask<SqlConnection> GetCurrentConnection(CancellationToken cancellationToken, bool requireExisting = false)
     {
-        if (_connection is not null)
-            return _connection;
+        if (this._connection is not null)
+            return this._connection;
 
         if (requireExisting)
             throw new InvalidOperationException("No active transaction scope.");
 
-        var connectionString = _opts.CurrentValue.ConnectionString;
+        var connectionString = this._opts.CurrentValue.ConnectionString;
 
-        _connection = new SqlConnection(connectionString);
-        await _connection.OpenAsync(cancellationToken);
+        this._connection = new SqlConnection(connectionString);
+        await this._connection.OpenAsync(cancellationToken);
 
-        return _connection;
+        return this._connection;
     }
 
     private async Task DisposeTransactionAndConnection()
     {
         try
         {
-            if (_currentTransaction is not null)
+            if (this._currentTransaction is not null)
             {
-                await _currentTransaction.DisposeAsync();
+                await this._currentTransaction.DisposeAsync();
             }
         }
         catch { }
 
         try
         {
-            if (_connection is not null)
+            if (this._connection is not null)
             {
-                await _connection.DisposeAsync();
+                await this._connection.DisposeAsync();
             }
         }
         catch { }
 
-        _currentTransaction = null;
-        _connection = null;
+        this._currentTransaction = null;
+        this._connection = null;
     }
 
     #region " IDisposable / IAsyncDisposable "
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (this._disposed) return;
 
         try
         {
-            if (_currentTransaction is not null)
+            if (this._currentTransaction is not null)
             {
-                _currentTransaction.Rollback();
-                _currentTransaction.Dispose();
+                this._currentTransaction.Rollback();
+                this._currentTransaction.Dispose();
             }
 
-            _connection?.Dispose();
+            this._connection?.Dispose();
         }
         catch { }
 
-        _currentTransaction = null;
-        _connection = null;
-        _disposed = true;
+        this._currentTransaction = null;
+        this._connection = null;
+        this._disposed = true;
 
         GC.SuppressFinalize(this);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
+        if (this._disposed) return;
 
         try
         {
-            if (_currentTransaction is not null)
+            if (this._currentTransaction is not null)
             {
-                await _currentTransaction.RollbackAsync();
-                await _currentTransaction.DisposeAsync();
+                await this._currentTransaction.RollbackAsync();
+                await this._currentTransaction.DisposeAsync();
             }
 
-            if (_connection is not null)
-                await _connection.DisposeAsync();
+            if (this._connection is not null)
+                await this._connection.DisposeAsync();
         }
         catch { }
 
-        _currentTransaction = null;
-        _connection = null;
-        _disposed = true;
+        this._currentTransaction = null;
+        this._connection = null;
+        this._disposed = true;
 
         GC.SuppressFinalize(this);
     }

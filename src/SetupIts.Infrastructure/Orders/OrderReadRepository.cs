@@ -39,10 +39,9 @@ internal sealed class OrderReadRepository : DapperGenericRepository, IOrderReadR
         """;
 
 
-    public OrderReadRepository(IOptionsMonitor<SetupItsGlobalOptions> opts) : base(opts, true)
-    {
-
-    }
+    public OrderReadRepository(
+        ICurrentTransactionScope currentTransactionScope,
+        IOptionsMonitor<SetupItsGlobalOptions> opts) : base(currentTransactionScope, opts, true) { }
 
     public async Task<PrimitiveResult<OrderReadModel>> GetOne(OrderId id, CancellationToken cancellationToken)
     {

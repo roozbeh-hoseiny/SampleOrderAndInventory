@@ -8,11 +8,13 @@ using SetupIts.Infrastructure;
 namespace SetuIts.Tests.Integration;
 public sealed class OrderServiceIntegrationTests : IntegrationTestBase
 {
-
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IOrderService _orderService;
+
     public OrderServiceIntegrationTests()
     {
         this._unitOfWork = this.GetService<IUnitOfWork>();
+        this._orderService = this.GetService<IOrderService>();
     }
 
 
@@ -22,26 +24,35 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
         await this.ClearOrderTables();
         var orderService = this.GetService<IOrderService>();
 
-        var result = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
+        var result = await orderService.CreateOrder(this.CreateNewOrderRequest(), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]
     public async Task ConfirmOrder_ShouldWork()
     {
+        var orderId = await this.CreateOrder();
+
+        var result = await this._orderService
+            .ConfirmOrder(new ConfirmOrderRequest(orderId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+    async Task<OrderId> CreateOrder()
+    {
         await this.ClearOrderTables();
-        var orderService = this.GetService<IOrderService>();
+
 
         var onHandQty = 50;
         await this.ClearInventoryTableAsync();
 
         var inventoryItem1 = InventoryItem.Create(
             this._productId1,
-            1,
+            50,
             Quantity.Create(onHandQty).Value).Value;
         var inventoryItem2 = InventoryItem.Create(
             this._productId2,
-            1,
+            50,
             Quantity.Create(onHandQty).Value).Value;
 
         // Act
@@ -50,64 +61,45 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
             await this._unitOfWork.InventoryRepository.Add(inventoryItem1, CancellationToken.None);
             return await this._unitOfWork.InventoryRepository.Add(inventoryItem2, CancellationToken.None);
         });
-
-
-        var addResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
-        addResult.IsSuccess.Should().BeTrue();
-
-        var result = await orderService.ConfirmOrder(new ConfirmOrderRequest(addResult.Value), CancellationToken.None);
-
-        result.IsSuccess.Should().BeTrue();
+        var result = await this._orderService.CreateOrder(this.CreateNewOrderRequest(), CancellationToken.None);
+        return result.Value;
     }
-
     [Fact]
     public async Task CancelOrder_ShouldWork()
     {
-        await this.ClearOrderTables();
+        var orderId = await this.CreateOrder();
 
-        var orderService = this.GetService<IOrderService>();
-
-        var createResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
-        createResult.IsSuccess.Should().BeTrue();
-
-        var confirmResult = await orderService.ConfirmOrder(new ConfirmOrderRequest(createResult.Value), CancellationToken.None);
+        var confirmResult = await this._orderService.ConfirmOrder(new ConfirmOrderRequest(orderId), CancellationToken.None);
         confirmResult.IsSuccess.Should().BeTrue();
 
-        var result = await orderService.CancelOrder(new CancelOrderRequest(createResult.Value), CancellationToken.None);
+        var result = await this._orderService.CancelOrder(new CancelOrderRequest(orderId), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]
     public async Task Confirming_CancelledOrder_ShouldNotWork()
     {
-        await this.ClearOrderTables();
+        var orderId = await this.CreateOrder();
 
-        var orderService = this.GetService<IOrderService>();
+        var confirmResult = await this._orderService.ConfirmOrder(new ConfirmOrderRequest(orderId), CancellationToken.None);
+        confirmResult.IsSuccess.Should().BeTrue();
 
-        var createResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
-        createResult.IsSuccess.Should().BeTrue();
-
-        var cancelResult = await orderService.CancelOrder(new CancelOrderRequest(createResult.Value), CancellationToken.None);
+        var cancelResult = await this._orderService.CancelOrder(new CancelOrderRequest(orderId), CancellationToken.None);
         cancelResult.IsSuccess.Should().BeTrue();
 
-        var confimrResult = await orderService.ConfirmOrder(new ConfirmOrderRequest(createResult.Value), CancellationToken.None);
+        var confimrResult = await this._orderService.ConfirmOrder(new ConfirmOrderRequest(orderId), CancellationToken.None);
         confimrResult.IsFailure.Should().BeTrue();
     }
 
     [Fact]
     public async Task Cancelling_CancelledOrder_ShouldNotWork()
     {
-        await this.ClearOrderTables();
+        var orderId = await this.CreateOrder();
 
-        var orderService = this.GetService<IOrderService>();
-
-        var createResult = await orderService.CreateOrder(CreateNewOrderRequest(), CancellationToken.None);
-        createResult.IsSuccess.Should().BeTrue();
-
-        var cancelResult = await orderService.CancelOrder(new CancelOrderRequest(createResult.Value), CancellationToken.None);
+        var cancelResult = await this._orderService.CancelOrder(new CancelOrderRequest(orderId), CancellationToken.None);
         cancelResult.IsSuccess.Should().BeTrue();
 
-        var seconCancelResult = await orderService.CancelOrder(new CancelOrderRequest(createResult.Value), CancellationToken.None);
+        var seconCancelResult = await this._orderService.CancelOrder(new CancelOrderRequest(orderId), CancellationToken.None);
         seconCancelResult.IsFailure.Should().BeTrue();
     }
 
@@ -118,7 +110,7 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
 
         var orderService = this.GetService<IOrderService>();
 
-        var req = CreateNewOrderRequest();
+        var req = this.CreateNewOrderRequest();
         var createResult = await orderService.CreateOrder(req, CancellationToken.None);
         createResult.IsSuccess.Should().BeTrue();
 
@@ -132,12 +124,12 @@ public sealed class OrderServiceIntegrationTests : IntegrationTestBase
            1,
            [
                 new SetupIts.Domain.Aggregates.Ordering.OrderItemCreateData(
-                    _productId1,
-                    Quantity.CreateUnsafe(1),
+                    this._productId1,
+                    Quantity.CreateUnsafe(50),
                     UnitPrice.CreateUnsafe(1000)),
                 new SetupIts.Domain.Aggregates.Ordering.OrderItemCreateData(
-                    _productId2,
-                    Quantity.CreateUnsafe(3),
+                    this._productId2,
+                    Quantity.CreateUnsafe(50),
                     UnitPrice.CreateUnsafe(852))
            ]);
 
