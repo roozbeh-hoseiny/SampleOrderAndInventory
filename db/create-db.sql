@@ -1,5 +1,4 @@
-/****** Object:  Table [dbo].[Idempotency]    Script Date: 2/12/2026 5:29:32 PM ******/
-SET ANSI_NULLS ON
+﻿SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
@@ -19,7 +18,7 @@ CREATE TABLE [dbo].[Idempotency](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[InventoryItem]    Script Date: 2/12/2026 5:29:32 PM ******/
+/****** Object:  Table [dbo].[InventoryItem]    Script Date: 2/12/2026 5:48:51 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -37,7 +36,7 @@ CREATE TABLE [dbo].[InventoryItem](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[Order]    Script Date: 2/12/2026 5:29:32 PM ******/
+/****** Object:  Table [dbo].[Order]    Script Date: 2/12/2026 5:48:51 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -54,7 +53,7 @@ CREATE TABLE [dbo].[Order](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[OrderItem]    Script Date: 2/12/2026 5:29:32 PM ******/
+/****** Object:  Table [dbo].[OrderItem]    Script Date: 2/12/2026 5:48:51 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -72,7 +71,7 @@ CREATE TABLE [dbo].[OrderItem](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[OutboxMessage]    Script Date: 2/12/2026 5:29:32 PM ******/
+/****** Object:  Table [dbo].[OutboxMessage]    Script Date: 2/12/2026 5:48:51 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -90,7 +89,7 @@ CREATE TABLE [dbo].[OutboxMessage](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[Product]    Script Date: 2/12/2026 5:29:32 PM ******/
+/****** Object:  Table [dbo].[Product]    Script Date: 2/12/2026 5:48:51 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -106,6 +105,10 @@ CREATE TABLE [dbo].[Product](
 	[Id] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
+GO
+INSERT [dbo].[Product] ([Id], [ProductName], [Sku], [IsActive]) VALUES (N'01KH5WPMCQW2DNBF72KZXF0NZW', N'Name1', N'Sku1', 1)
+GO
+INSERT [dbo].[Product] ([Id], [ProductName], [Sku], [IsActive]) VALUES (N'01KH5WQB3BKV45TW1QCMC9FWSN', N'Name2', N'Sku2', 1)
 GO
 ALTER TABLE [dbo].[InventoryItem]  WITH CHECK ADD  CONSTRAINT [FK_InventoryItem_Product] FOREIGN KEY([ProductId])
 REFERENCES [dbo].[Product] ([Id])

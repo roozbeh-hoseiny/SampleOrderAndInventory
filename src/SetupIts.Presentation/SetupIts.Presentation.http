@@ -1,6 +1,29 @@
 @SetupIts.Presentation_HostAddress = http://localhost:5063
 
-GET {{SetupIts.Presentation_HostAddress}}/weatherforecast/
+POST {{SetupIts.Presentation_HostAddress}}/api/v1/orders
 Accept: application/json
-
+content-type:application/json
+x-idempotency-id: DB95A56E-DDBE-4441-A8F7-69444980F184
+{
+  "customerId": 1,
+  "items": [
+    {
+      "productId": "01KH5WQB3BKV45TW1QCMC9FWSN",
+      "quantity": 1,
+      "unitPrice": 1
+    }
+  ]
+}
 ###
+
+POST {{SetupIts.Presentation_HostAddress}}/api/v1/orders/01KH936TNK49R958GC34NJQ796/confirm
+Accept: application/json
+###
+
+POST {{SetupIts.Presentation_HostAddress}}/api/v1/orders/01KH936TNK49R958GC34NJQ796/cancel
+Accept: application/json
+###
+
+
+GET {{SetupIts.Presentation_HostAddress}}/api/v1/orders/01KH936TNK49R958GC34NJQ796
+Accept: application/json
