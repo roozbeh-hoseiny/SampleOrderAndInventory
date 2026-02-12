@@ -1,4 +1,5 @@
 ﻿using SetupIts.Shared.Primitives;
+using System.Globalization;
 
 namespace SetupIts.Domain.ValueObjects;
 public readonly record struct UnitPrice
@@ -9,6 +10,8 @@ public readonly record struct UnitPrice
 
     public readonly static UnitPrice Zero = new(0);
     public decimal Value { get; }
+
+    public UnitPrice() : this(0) { }
 
     private UnitPrice(decimal value)
     {
@@ -77,4 +80,19 @@ public readonly record struct UnitPrice
     }
 
     public override string ToString() => this.Value.ToString("0.00");
+
+    public static bool TryParse(
+         string value,
+         IFormatProvider? provider,
+         out UnitPrice result)
+    {
+        if (!decimal.TryParse(value, NumberStyles.Number, provider, out var parsed))
+        {
+            result = default;
+            return false;
+        }
+
+        result = new UnitPrice(parsed);
+        return true;
+    }
 }

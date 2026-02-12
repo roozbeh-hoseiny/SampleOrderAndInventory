@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using SetupIts.Application;
 using SetupIts.Domain.ValueObjects;
 using SetupIts.Hosting;
+using SetupIts.Infrastructure;
 
 namespace SetuIts.Tests.Integration;
 public abstract class IntegrationTestBase
@@ -39,7 +40,7 @@ public abstract class IntegrationTestBase
             services,
             this.Configuration,
             false,
-            ApplicationAssemblyReference.Assembly);
+            [ApplicationAssemblyReference.Assembly, InfrastructureAssemblyReference.Assembly]);
 
         this.ServiceProvider = services.BuildServiceProvider();
     }

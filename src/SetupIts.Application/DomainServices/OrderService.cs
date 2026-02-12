@@ -1,10 +1,10 @@
-﻿using SetupIts.Domain.Aggregates.Inventory.Persistence;
+﻿using SetupIts.Domain;
+using SetupIts.Domain.Aggregates.Inventory.Persistence;
 using SetupIts.Domain.Aggregates.Ordering;
 using SetupIts.Domain.Aggregates.Ordering.Persistence;
 using SetupIts.Domain.Aggregates.Ordering.Specifications;
 using SetupIts.Domain.DomainServices;
 using SetupIts.Domain.ValueObjects;
-using SetupIts.Infrastructure;
 using SetupIts.Shared.Primitives;
 
 namespace SetupIts.Application.DomainServices;
@@ -37,6 +37,9 @@ internal sealed class OrderService : IOrderService
 
     public async Task<PrimitiveResult<OrderId>> CreateOrder(CreateOrderRequest request, CancellationToken cancellationToken)
     {
+        if (request.OrderItems.Length == 0)
+            return PrimitiveResult.Failure<OrderId>("Error", "Can not create order without items");
+
         var newOrder = await Order.Create(
             request.CustomerId,
             request.OrderItems,

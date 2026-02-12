@@ -9,6 +9,7 @@ public readonly record struct Quantity : IComparable<Quantity>
     readonly static PrimitiveResult<Quantity> InvalidQuantity = PrimitiveResult.Failure<Quantity>("Error", "Quantity can not be less than zero");
     public int Value { get; }
 
+    public Quantity() : this(0) { }
     private Quantity(int value)
     {
         if (value < 0)

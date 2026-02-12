@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SetupIts.Domain;
 using SetupIts.Domain.Abstractios;
 using SetupIts.Domain.Aggregates.Ordering.Persistence;
 using SetupIts.Domain.Aggregates.Ordering.Specifications;

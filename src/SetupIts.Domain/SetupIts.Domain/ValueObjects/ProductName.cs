@@ -9,6 +9,7 @@ public readonly record struct ProductName
     readonly static PrimitiveResult<ProductName> InvalidProductNameLength = PrimitiveResult.Failure<ProductName>("Error", $"ProductName can not be more than {MAX_LENGTH} characters");
     public string Value { get; }
 
+    public ProductName() { this.Value = string.Empty; }
     private ProductName(string value)
     {
         if (string.IsNullOrWhiteSpace(value))

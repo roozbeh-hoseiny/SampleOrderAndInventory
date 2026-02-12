@@ -1,8 +1,8 @@
 ﻿using FluentAssertions;
+using SetupIts.Domain;
 using SetupIts.Domain.Aggregates.Inventory;
 using SetupIts.Domain.Aggregates.Inventory.Persistence;
 using SetupIts.Domain.ValueObjects;
-using SetupIts.Infrastructure;
 
 namespace SetuIts.Tests.Integration;
 

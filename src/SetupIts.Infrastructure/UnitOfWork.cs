@@ -1,22 +1,13 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using SetupIts.Domain;
 using SetupIts.Domain.Aggregates.Inventory.Persistence;
 using SetupIts.Domain.Aggregates.Ordering.Persistence;
 using SetupIts.Hosting;
 using System.Data;
 
 namespace SetupIts.Infrastructure;
-public interface IUnitOfWork
-{
-    IOrderRepository OrderRepository { get; }
-    IInventoryRepository InventoryRepository { get; }
-
-    Task<TResult> ExecuteInTransactionAsync<TResult>(
-       Func<Task<TResult>> action,
-       IsolationLevel isolation = IsolationLevel.ReadCommitted,
-       CancellationToken cancellationToken = default);
-}
 public sealed class UnitOfWork : IUnitOfWork
 {
     #region " Fields "
@@ -38,13 +29,9 @@ public sealed class UnitOfWork : IUnitOfWork
         this._currentTransactionScopeHandler = currentTransactionScopeHandler;
     }
 
-
-
-
-
     async ValueTask<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
     {
-        var connection = new SqlConnection(_connectionString);
+        var connection = new SqlConnection(this._connectionString);
 
         try
         {
@@ -60,7 +47,7 @@ public sealed class UnitOfWork : IUnitOfWork
 
     async Task<TResult> WithConnectionAsync<TResult>(Func<SqlConnection, Task<TResult>> action, CancellationToken ct = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        await using var connection = await this.OpenConnectionAsync(ct);
         return await action(connection);
     }
     public async Task<TResult> ExecuteInTransactionAsync<TResult>(
@@ -68,7 +55,7 @@ public sealed class UnitOfWork : IUnitOfWork
        IsolationLevel isolation = IsolationLevel.ReadCommitted,
        CancellationToken cancellationToken = default)
     {
-        await using var connection = new SqlConnection(_connectionString);
+        await using var connection = new SqlConnection(this._connectionString);
         await connection.OpenAsync(cancellationToken);
 
         await using var transaction = connection.BeginTransaction(isolation);

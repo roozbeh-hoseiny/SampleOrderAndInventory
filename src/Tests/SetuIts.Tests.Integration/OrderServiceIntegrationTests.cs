@@ -1,9 +1,9 @@
 ﻿using Dapper;
 using FluentAssertions;
+using SetupIts.Domain;
 using SetupIts.Domain.Aggregates.Inventory;
 using SetupIts.Domain.DomainServices;
 using SetupIts.Domain.ValueObjects;
-using SetupIts.Infrastructure;
 
 namespace SetuIts.Tests.Integration;
 public sealed class OrderServiceIntegrationTests : IntegrationTestBase

@@ -12,6 +12,7 @@ public readonly record struct TotalAmount
 
     public decimal Value { get; }
 
+    public TotalAmount() : this(0) { }
     private TotalAmount(decimal value)
     {
         if (!IsValid(value))

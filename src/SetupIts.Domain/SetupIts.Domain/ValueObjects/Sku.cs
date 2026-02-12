@@ -10,6 +10,7 @@ public readonly record struct Sku
     readonly static PrimitiveResult<Sku> InvalidSkuLength = PrimitiveResult.Failure<Sku>("Error", $"Sku can not be more than {MAX_LENGTH} characters");
     public string Value { get; }
 
+    public Sku() { this.Value = string.Empty; }
     private Sku(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
